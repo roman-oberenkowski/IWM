@@ -1,5 +1,11 @@
+import datetime
+
 import matplotlib.pyplot as plt
 import numpy as np
+import pydicom
+from pydicom.dataset import Dataset, FileDataset, FileMetaDataset
+from pydicom.uid import ExplicitVRLittleEndian
+import pydicom._storage_sopclass_uids
 import skimage.io as io
 import skimage.exposure as exp
 import skimage.draw
@@ -10,6 +16,100 @@ import cv2
 
 global tom
 global state_showing_results
+
+def calcRMSE(img1 , img2):
+    temp = img1 - img2
+    temp = temp * temp
+    return math.sqrt(np.mean(temp))
+
+def calcStatistics():
+    testImg = io.imread("Shepp_logan.jpg", as_gray=True)
+    file = open("ZmianyN.txt" , 'w+')
+    file.write("N RMSE\n")
+    for i in range (90,721,90):
+        tomograf = Tomograf(testImg , i)
+        tomograf.makeSinogramWithParams(False,False)
+        rmse = calcRMSE(tomograf.inputImg , tomograf.outputImg)
+        file.write(str(i) + " "+ str(rmse)+"\n")
+    file.close()
+    file = open("ZmianyIlosciSkanow.txt", 'w+')
+    file.write("N RMSE\n")
+    for i in range(90, 721, 90):
+        tomograf = Tomograf(testImg, 180,i)
+        tomograf.makeSinogramWithParams(False, False)
+        rmse = calcRMSE(tomograf.inputImg, tomograf.outputImg)
+        file.write(str(i) + " " + str(rmse) + "\n")
+    file.close()
+    file = open("ZmianyL.txt", 'w+')
+    file.write("N RMSE\n")
+    for i in range(45, 271, 45):
+        tomograf = Tomograf(testImg, 180,90,np.radians(i))
+        tomograf.makeSinogramWithParams(False, False)
+        rmse = calcRMSE(tomograf.inputImg, tomograf.outputImg)
+        file.write(str(i) + " " + str(rmse) + "\n")
+    file.close()
+
+def makeDicom(img , filename,patiantName ,patientID, patientWeigth , comment):
+    # File meta info data elements
+    file_meta = FileMetaDataset()
+
+    file_meta.FileMetaInformationGroupLength = 192
+    file_meta.FileMetaInformationVersion = b'\x00\x01'
+    file_meta.MediaStorageSOPClassUID = '1.2.840.10008.5.1.4.1.1.2'
+    file_meta.MediaStorageSOPInstanceUID = '1.3.6.1.4.1.5962.1.1.1.1.1.20040119072730.12322'
+    file_meta.TransferSyntaxUID = '1.2.840.10008.1.2.1'
+    file_meta.ImplementationClassUID = '1.3.6.1.4.1.5962.2'
+    file_meta.ImplementationVersionName = 'DCTOOL100'
+    file_meta.SourceApplicationEntityTitle = 'CLUNIE1'
+
+    # Main data elements
+    ds = Dataset()
+    ds.SpecificCharacterSet = 'ISO_IR 100'
+    ds.ImageType = ['ORIGINAL', 'PRIMARY', 'AXIAL']
+
+    dt = datetime.datetime.now()
+    ds.ContentDate = dt.strftime('%Y%m%d')
+    timeStr = dt.strftime('%H%M%S.%f')  # long format with micro seconds
+    ds.ContentTime = timeStr
+
+    ds.PatientName = patiantName
+    ds.PatientID = patientID
+    ds.PatientWeight = patientWeigth
+
+
+    ds.StudyInstanceUID = '1.3.6.1.4.1.5962.1.2.1.20040119072730.12322'
+    ds.SeriesInstanceUID = '1.3.6.1.4.1.5962.1.3.1.1.20040119072730.12322'
+    ds.ImageComments = comment
+
+    ds.SamplesPerPixel = 1
+    ds.PhotometricInterpretation = 'MONOCHROME2'
+    ds.Rows = tom.outputImg.shape[0]
+    ds.Columns = tom.outputImg.shape[1]
+
+    ds.BitsAllocated = 16
+    ds.BitsStored = 16
+    ds.HighBit = 15
+    ds.PixelRepresentation = 1
+    ds.PixelPaddingValue = -2000
+    ds.RescaleIntercept = "-1024.0"
+    ds.RescaleSlope = "1.0"
+    savedImg = img
+    savedImg = savedImg / np.max(savedImg)
+    savedImg = savedImg * (2 ^ 16 - 1)
+    savedImg[savedImg < 0] = 0
+    savedImg = savedImg.astype(np.uint16)
+    ds.PixelData = savedImg
+
+    ds.file_meta = file_meta
+    ds.is_implicit_VR = True
+    ds.is_little_endian = True
+    ds.save_as(filename, write_like_original=False)
+
+def readDicom(filename):
+    ds = pydicom.dcmread(filename)
+    print(ds)
+    plt.imshow(ds.pixel_array, cmap="gray")
+    plt.show()
 
 
 class Tomograf:
@@ -25,7 +125,7 @@ class Tomograf:
             kernel[kernel_size // 2 - i] = kernel[kernel_size // 2 + i]
         return kernel
 
-    def __init__(self, img_param=None):
+    def __init__(self, img_param=None , n=180 , iterNumber=90 , l=np.pi):
         self.isFiltered = True
         self.rescalleIntensity = False
         self.simulate_outer_circle= True
@@ -47,9 +147,9 @@ class Tomograf:
             print(offset)
             self.inputImg = cv2.copyMakeBorder(self.inputImg, offset, offset, offset, offset, cv2.BORDER_CONSTANT, value=0)
 
-        self.iterCount = 90
-        self.n = 180
-        self.l = np.pi
+        self.iterCount = iterNumber
+        self.n = n
+        self.l = l
         self.sinogram = np.zeros((self.iterCount, self.n))
         self.outputImg = np.zeros(self.inputImg.shape)
         self.rescalledImg = np.zeros(self.inputImg.shape)
@@ -156,6 +256,7 @@ def calculate_tomograph(img=None,filter=False,rescalle=False):
     tom.makeSinogramWithParams(filter,rescalle)
     return tom
 
+calcStatistics()
 
 st.set_page_config(page_title="Symulator tomografu RO KL", page_icon="random")
 st.write("# Symulator tomografu RO KL")
