@@ -317,7 +317,7 @@ if input_image is not None and ss.showing_output:
 
     generate_dicom_button = st.sidebar.button("Generate Dicom file")
     if generate_dicom_button:
-        filename='patient_'+str(patient_id_input)+first_name+' '+last_name+'.dicom'
+        filename='CT_'+str(patient_id_input)+'_'+first_name+'_'+last_name+'.dicom'
         makeDicom(tomix.outputImg, filename, first_name + ' ' + last_name, str(patient_id_input),
                   patient_weight,'comment')
         st.sidebar.markdown(get_binary_file_downloader_html(filename, 'Dicom File'),
