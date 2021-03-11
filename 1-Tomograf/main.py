@@ -1,6 +1,6 @@
 import base64
 import datetime
-
+import SessionState
 import matplotlib.pyplot as plt
 import numpy as np
 import pydicom
@@ -50,7 +50,7 @@ def calcStatistics():
     file.close()
 
 
-def makeDicom(img, filename, patiantName, patientID, patientWeigth, comment):
+def makeDicom(img, filename, patiantName, patientID, patientWeigth,patientSex, comment):
     # File meta info data elements
     file_meta = FileMetaDataset()
 
@@ -76,6 +76,7 @@ def makeDicom(img, filename, patiantName, patientID, patientWeigth, comment):
     ds.PatientName = patiantName
     ds.PatientID = patientID
     ds.PatientWeight = patientWeigth
+    ds.PatientSex = patientSex
 
     ds.StudyInstanceUID = '1.3.6.1.4.1.5962.1.2.1.20040119072730.12322'
     ds.SeriesInstanceUID = '1.3.6.1.4.1.5962.1.3.1.1.20040119072730.12322'
@@ -244,7 +245,7 @@ class Tomograf:
 # tom2.makeSinogramWithParams(True,True)
 
 import streamlit as st
-import SessionState
+
 
 global tom
 
@@ -319,7 +320,7 @@ if input_image is not None and ss.showing_output:
     if generate_dicom_button:
         filename='CT_'+str(patient_id_input)+'_'+first_name+'_'+last_name+'.dicom'
         makeDicom(tomix.outputImg, filename, first_name + ' ' + last_name, str(patient_id_input),
-                  patient_weight,'comment')
+                  patient_weight,'F','comment')
         st.sidebar.markdown(get_binary_file_downloader_html(filename, 'Dicom File'),
                             unsafe_allow_html=True)
 
