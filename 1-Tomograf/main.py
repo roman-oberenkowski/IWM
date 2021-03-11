@@ -1,3 +1,4 @@
+import base64
 import datetime
 
 import matplotlib.pyplot as plt
@@ -14,28 +15,27 @@ import skimage
 import math
 import cv2
 
-global tom
-global state_showing_results
 
-def calcRMSE(img1 , img2):
+def calcRMSE(img1, img2):
     temp = img1 - img2
     temp = temp * temp
     return math.sqrt(np.mean(temp))
 
+
 def calcStatistics():
     testImg = io.imread("Shepp_logan.jpg", as_gray=True)
-    file = open("ZmianyN.txt" , 'w+')
+    file = open("ZmianyN.txt", 'w+')
     file.write("N RMSE\n")
-    for i in range (90,721,90):
-        tomograf = Tomograf(testImg , i)
-        tomograf.makeSinogramWithParams(False,False)
-        rmse = calcRMSE(tomograf.inputImg , tomograf.outputImg)
-        file.write(str(i) + " "+ str(rmse)+"\n")
+    for i in range(90, 721, 90):
+        tomograf = Tomograf(testImg, i)
+        tomograf.makeSinogramWithParams(False, False)
+        rmse = calcRMSE(tomograf.inputImg, tomograf.outputImg)
+        file.write(str(i) + " " + str(rmse) + "\n")
     file.close()
     file = open("ZmianyIlosciSkanow.txt", 'w+')
     file.write("N RMSE\n")
     for i in range(90, 721, 90):
-        tomograf = Tomograf(testImg, 180,i)
+        tomograf = Tomograf(testImg, 180, i)
         tomograf.makeSinogramWithParams(False, False)
         rmse = calcRMSE(tomograf.inputImg, tomograf.outputImg)
         file.write(str(i) + " " + str(rmse) + "\n")
@@ -43,13 +43,14 @@ def calcStatistics():
     file = open("ZmianyL.txt", 'w+')
     file.write("N RMSE\n")
     for i in range(45, 271, 45):
-        tomograf = Tomograf(testImg, 180,90,np.radians(i))
+        tomograf = Tomograf(testImg, 180, 90, np.radians(i))
         tomograf.makeSinogramWithParams(False, False)
         rmse = calcRMSE(tomograf.inputImg, tomograf.outputImg)
         file.write(str(i) + " " + str(rmse) + "\n")
     file.close()
 
-def makeDicom(img , filename,patiantName ,patientID, patientWeigth , comment):
+
+def makeDicom(img, filename, patiantName, patientID, patientWeigth, comment):
     # File meta info data elements
     file_meta = FileMetaDataset()
 
@@ -76,15 +77,14 @@ def makeDicom(img , filename,patiantName ,patientID, patientWeigth , comment):
     ds.PatientID = patientID
     ds.PatientWeight = patientWeigth
 
-
     ds.StudyInstanceUID = '1.3.6.1.4.1.5962.1.2.1.20040119072730.12322'
     ds.SeriesInstanceUID = '1.3.6.1.4.1.5962.1.3.1.1.20040119072730.12322'
     ds.ImageComments = comment
 
     ds.SamplesPerPixel = 1
     ds.PhotometricInterpretation = 'MONOCHROME2'
-    ds.Rows = tom.outputImg.shape[0]
-    ds.Columns = tom.outputImg.shape[1]
+    ds.Rows = img.shape[0]
+    ds.Columns = img.shape[1]
 
     ds.BitsAllocated = 16
     ds.BitsStored = 16
@@ -104,6 +104,7 @@ def makeDicom(img , filename,patiantName ,patientID, patientWeigth , comment):
     ds.is_implicit_VR = True
     ds.is_little_endian = True
     ds.save_as(filename, write_like_original=False)
+
 
 def readDicom(filename):
     ds = pydicom.dcmread(filename)
@@ -125,27 +126,30 @@ class Tomograf:
             kernel[kernel_size // 2 - i] = kernel[kernel_size // 2 + i]
         return kernel
 
-    def __init__(self, img_param=None , n=180 , iterNumber=90 , l=np.pi):
+    def __init__(self, img_param=None, n=180, iterNumber=90, l=np.pi):
         self.isFiltered = True
         self.rescalleIntensity = False
-        self.simulate_outer_circle= True
+        self.simulate_outer_circle = True
         if img_param is None:
             self.inputImg = io.imread("Kolo.jpg", as_gray=True)
         else:
             self.inputImg = img_param
-        #make the image square
+        # make the image square
         (x, y) = self.inputImg.shape
         if (x > y):
-            self.inputImg = cv2.copyMakeBorder(self.inputImg, 0, 0, (x - y) // 2, (x - y) // 2, cv2.BORDER_CONSTANT, value=0)
+            self.inputImg = cv2.copyMakeBorder(self.inputImg, 0, 0, (x - y) // 2, (x - y) // 2, cv2.BORDER_CONSTANT,
+                                               value=0)
         elif (x < y):
-            self.inputImg = cv2.copyMakeBorder(self.inputImg, (y - x) // 2, (y - x) // 2, 0, 0, cv2.BORDER_CONSTANT, value=0)
+            self.inputImg = cv2.copyMakeBorder(self.inputImg, (y - x) // 2, (y - x) // 2, 0, 0, cv2.BORDER_CONSTANT,
+                                               value=0)
 
         if self.simulate_outer_circle:
             (x, y) = self.inputImg.shape
             print(self.inputImg.shape)
             offset = int((math.sqrt(2) * x) // 4)
             print(offset)
-            self.inputImg = cv2.copyMakeBorder(self.inputImg, offset, offset, offset, offset, cv2.BORDER_CONSTANT, value=0)
+            self.inputImg = cv2.copyMakeBorder(self.inputImg, offset, offset, offset, offset, cv2.BORDER_CONSTANT,
+                                               value=0)
 
         self.iterCount = iterNumber
         self.n = n
@@ -189,9 +193,9 @@ class Tomograf:
     def filter_image(self, j):
         self.sinogram[j, :] = np.convolve(self.sinogram[j, :], self.kernel, mode='same')
 
-    def makeSinogramWithParams(self,filter,rescalle_intensity):
-        self.isFiltered=filter
-        self.rescalleIntensity=rescalle_intensity
+    def makeSinogramWithParams(self, filter, rescalle_intensity):
+        self.isFiltered = filter
+        self.rescalleIntensity = rescalle_intensity
         self.makeSinogram()
 
     def makeSinogram(self):
@@ -206,7 +210,7 @@ class Tomograf:
             # plt.show()
             # pomCounter+=1
 
-        if(self.rescalleIntensity):
+        if (self.rescalleIntensity):
             print("rescalling intensity")
             float_img = self.outputImg
             p2, p98 = np.percentile(float_img, (1, 98))
@@ -215,7 +219,7 @@ class Tomograf:
                 in_range=(p2, p98),
                 out_range=(0, 1)
             )
-            self.outputImg=img_rescalled
+            self.outputImg = img_rescalled
 
             float_img = self.sinogram
             p2, p98 = np.percentile(float_img, (1, 98))
@@ -225,8 +229,8 @@ class Tomograf:
                 out_range=(0, 1)
             )
             self.sinogram = img_rescalled
-        #plt.imshow(self.outputImg,cmap="gray")
-        #plt.show()
+        # plt.imshow(self.outputImg,cmap="gray")
+        # plt.show()
 
     def test1(self):
         emiter = self.calcEmiterPosition(0, np.min(self.inputImg.shape) // 2 - 1, self.inputImg.shape)
@@ -235,64 +239,89 @@ class Tomograf:
             line = skimage.draw.line_nd(emiter, det)
             self.inputImg[line] = 1
 
-#tom2=Tomograf()
-#tom2.makeSinogramWithParams(True,True)
+
+# tom2=Tomograf()
+# tom2.makeSinogramWithParams(True,True)
 
 import streamlit as st
+import SessionState
+
+global tom
 
 @st.cache
-def start():
-    global state_showing_results
-    state_showing_results = False
-
-
-@st.cache
-def calculate_tomograph(img=None,filter=False,rescalle=False):
+def calculate_tomograph(img=None, filter=False, rescalle=False):
     global tom
     if (img is not None):
         tom = Tomograf(img)
     else:
         tom = Tomograf(None)
-    tom.makeSinogramWithParams(filter,rescalle)
+    tom.makeSinogramWithParams(filter, rescalle)
     return tom
 
-calcStatistics()
+import os
+import base64
 
+def get_binary_file_downloader_html(bin_file, file_label='File'):
+    with open(bin_file, 'rb') as f:
+        data = f.read()
+    bin_str = base64.b64encode(data).decode()
+    href = f'<a href="data:application/octet-stream;base64,{bin_str}" download="{os.path.basename(bin_file)}">Download {file_label}</a>'
+    return href
+
+
+# calcStatistics()
+
+# https://towardsdatascience.com/pagination-in-streamlit-82b62de9f62b
+ss = SessionState.get(page_number = 0, showing_output = False, var_2 = "Streamlit demo!")
 st.set_page_config(page_title="Symulator tomografu RO KL", page_icon="random")
 st.write("# Symulator tomografu RO KL")
-start()
 
-input_image = st.file_uploader("Upload Files", type=['png', 'jpeg', 'jpg'])
-# input_image = io.imread("Kolo.jpg", as_gray=True)
+input_image = st.sidebar.file_uploader("Upload Files", type=['png', 'jpeg', 'jpg'])
+#input_image = io.imread("Kolo.jpg", as_gray=True)
+input_image_checkbox = st.sidebar.checkbox("Show input image")
+is_filtered_checkbox = st.sidebar.checkbox("Use Filter")
+rescalle_intensity_checkbox = st.sidebar.checkbox("Rescalle intensity")
+detector_count=st.sidebar.number_input('Detector Count',value=180)
+iterations=st.sidebar.number_input('Iterations',value=180)
+run_button = st.sidebar.button("Run!")
+if run_button and input_image is not None:
+    ss.showing_output=True
 
-if input_image is not None:
+# dicom information
 
-    # file_details = {"FileName": input_image.name, "FileType": input_image.type, "FileSize": input_image.size}
-    # st.write(file_details)
-    input_image_checkbox = st.checkbox("Show input image")
+
+patient_id_input = st.sidebar.number_input('Patient ID',min_value=1,max_value=100000)
+patient_weight = st.sidebar.number_input('Weight',min_value=10.0,max_value=10000.0)
+gender_input = st.sidebar.radio("Gender: ", ("Male", "Female"))
+first_name = st.sidebar.text_input("First name",value='Name')
+last_name = st.sidebar.text_input("Last name",value='Last name')
+date_of_birth = st.sidebar.date_input("date of birth")
+
+
+if input_image is not None and ss.showing_output:
+
+
+    #file_details = {"FileName": input_image.name, "FileType": input_image.type, "FileSize": input_image.size}
+    #st.write(file_details)
     if input_image_checkbox:
         st.image(input_image)
-    is_filtered_checkbox = st.checkbox("Use Filter")
-    rescalle_intensity_checkbox = st.checkbox("Rescalle intensity")
-    run_button = st.button("Run")
-    if (run_button):
+    selected_iteration = st.slider("Iteration", 1, 100, 20)
+    st.write(selected_iteration)
+    print(is_filtered_checkbox, rescalle_intensity_checkbox)
+    tomix = calculate_tomograph(io.imread(input_image, as_gray=True), is_filtered_checkbox, rescalle_intensity_checkbox)
 
-        selected_iteration = st.slider("Iteration", 1, 100, 20)
-        st.write(selected_iteration)
-        print(is_filtered_checkbox,rescalle_intensity_checkbox)
-        tomix = calculate_tomograph(io.imread(input_image, as_gray=True),is_filtered_checkbox,rescalle_intensity_checkbox)
+    img = skimage.img_as_float(tomix.outputImg)
+    sinogram = skimage.img_as_float(tomix.sinogram)
+    st.image(skimage.transform.resize(sinogram, (600, 600)), clamp=True)
+    st.image(skimage.transform.resize(img, (600, 600)), clamp=True)
 
-        img = skimage.img_as_float(tomix.outputImg)
-        sinogram = skimage.img_as_float(tomix.sinogram)
-        st.image(skimage.transform.resize(sinogram, (600, 600)), clamp=True)
-        st.image(skimage.transform.resize(img, (600, 600)), clamp=True)
-    else:
-        age_input = st.number_input('Age')
-        gender_input = st.radio("Gender: ", ("Male", "Female"))
-        first_name = st.text_input("First name")
-        last_name = st.text_input("Last name")
-        date_of_birth = st.date_input("date of birth")
-
+    generate_dicom_button = st.sidebar.button("Generate Dicom file")
+    if generate_dicom_button:
+        filename='patient_'+str(patient_id_input)+first_name+' '+last_name+'.dicom'
+        makeDicom(tomix.outputImg, filename, first_name + ' ' + last_name, str(patient_id_input),
+                  patient_weight,'comment')
+        st.sidebar.markdown(get_binary_file_downloader_html(filename, 'Dicom File'),
+                            unsafe_allow_html=True)
 
 else:
-    st.text("Please upload image first")
+    st.text("Please input a file to start")
