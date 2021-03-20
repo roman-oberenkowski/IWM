@@ -109,9 +109,24 @@ def makeDicom(img, filename, patiantName, patientID, patientWeigth, patientSex, 
 
 def readDicom(filename):
     ds = pydicom.dcmread(filename)
-    print(ds)
-    plt.imshow(ds.pixel_array, cmap="gray")
-    plt.show()
+    float_img= skimage.img_as_uint(ds.pixel_array)
+    # print("rescalling intensity")
+    p2, p98 = np.percentile(float_img, (1, 98))
+    img_rescalled = exp.rescale_intensity(
+        float_img,
+        in_range=(p2, p98),
+        out_range=(0, 1)
+    )
+    resized = skimage.transform.resize(img_rescalled, (400, 400))
+
+    st.image(resized,clamp=True)
+    st.write("Patient info:")
+    st.write("Name: "+ str(ds.PatientName))
+    st.write("ID: " + ds.PatientID)
+    st.write(f'Weight: {ds.PatientWeight}')
+    st.write(f'Sex: {ds.PatientSex}')
+    st.write(f'Comment: {ds.ImageComments}')
+
 
 
 class Tomograf:
@@ -231,6 +246,7 @@ class Tomograf:
             self.partialOutputImgs.append(self.outputImg.copy())
             self.partialSinogramImgs.append(self.sinogram.copy())
         prog_bar.progress(1.0)
+        self.outputImg=self.rescalle_image(self.outputImg)
 
 
     def test1(self):
@@ -288,6 +304,7 @@ if run_button and input_image is not None:
     ss.showing_output = True
 
 # dicom information
+uploaded_dicom=st.sidebar.file_uploader("Upload DICOM", type=['dicom'])
 patient_id_input = st.sidebar.number_input('Patient ID', min_value=1, max_value=100000)
 patient_weight = st.sidebar.number_input('Weight', min_value=10.0, max_value=10000.0)
 gender_input = st.sidebar.radio("Gender: ", ("Male", "Female"))
@@ -324,3 +341,7 @@ if input_image is not None and ss.showing_output:
 
 else:
     st.text("Please input a file to start")
+
+if uploaded_dicom is not None:
+    st.write("Dicom photo:")
+    readDicom(uploaded_dicom)
