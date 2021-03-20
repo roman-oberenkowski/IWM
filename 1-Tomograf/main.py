@@ -108,9 +108,9 @@ def makeDicom(img, filename, patiantName, patientID, patientWeigth, patientSex, 
 
 
 def readDicom(filename):
+    st.write("# Dicom photo:")
     ds = pydicom.dcmread(filename)
     float_img= skimage.img_as_uint(ds.pixel_array)
-    # print("rescalling intensity")
     p2, p98 = np.percentile(float_img, (1, 98))
     img_rescalled = exp.rescale_intensity(
         float_img,
@@ -120,10 +120,10 @@ def readDicom(filename):
     resized = skimage.transform.resize(img_rescalled, (400, 400))
 
     st.image(resized,clamp=True)
-    st.write("Patient info:")
+    st.write("# Patient info:")
     st.write("Name: "+ str(ds.PatientName))
     st.write("ID: " + ds.PatientID)
-    st.write(f'Weight: {ds.PatientWeight}')
+    st.write(f'Weight: {ds.PatientWeight}kg')
     st.write(f'Sex: {ds.PatientSex}')
     st.write(f'Comment: {ds.ImageComments}')
 
@@ -142,10 +142,10 @@ class Tomograf:
             kernel[kernel_size // 2 - i] = kernel[kernel_size // 2 + i]
         return kernel
 
-    def __init__(self, img_param=None, n=180, iterNumber=90, l=np.pi):
-        self.isFiltered = True
-        self.rescalleIntensity = False
-        self.simulate_outer_circle = True
+    def __init__(self, img_param=None, n=180, iterNumber=90, l=np.pi, isFiltered=True,rescalleIntensity=True,simulateOuterCircle=True):
+        self.isFiltered = isFiltered
+        self.rescalleIntensity = rescalleIntensity
+        self.simulate_outer_circle = simulateOuterCircle
         if img_param is None:
             self.inputImg = io.imread("Kolo.jpg", as_gray=True)
         else:
@@ -210,10 +210,6 @@ class Tomograf:
     def filter_image(self, j):
         self.sinogram[j, :] = np.convolve(self.sinogram[j, :], self.kernel, mode='same')
 
-    def makeSinogramWithParams(self, filter, rescalle_intensity):
-        self.isFiltered = filter
-        self.rescalleIntensity = rescalle_intensity
-        self.makeSinogram()
 
     def rescalle_image(self, in_img):
         # print("rescalling intensity")
@@ -257,22 +253,16 @@ class Tomograf:
             self.inputImg[line] = 1
 
 
-# tom2=Tomograf()
-# tom2.makeSinogramWithParams(True,True)
-
 import streamlit as st
 
 global tom
 
 
 @st.cache #(suppress_st_warning=True)
-def calculate_tomograph(img=None, filter=False, rescalle=False):
+def calculate_tomograph(img,a,b,c,d,e,f):
     global tom
-    if (img is not None):
-        tom = Tomograf(img)
-    else:
-        tom = Tomograf(None)
-    tom.makeSinogramWithParams(filter, rescalle)
+    tom = Tomograf(img,detector_count,iterations,radial_length,is_filtered_checkbox,rescalle_intensity_checkbox,simulate_outer_circle_checkbox)
+    tom.makeSinogram()
     return tom
 
 
@@ -297,8 +287,10 @@ input_image = st.sidebar.file_uploader("Upload Files", type=['png', 'jpeg', 'jpg
 input_image_checkbox = st.sidebar.checkbox("Show input image")
 is_filtered_checkbox = st.sidebar.checkbox("Use Filter")
 rescalle_intensity_checkbox = st.sidebar.checkbox("Rescalle intensity")
+simulate_outer_circle_checkbox = st.sidebar.checkbox("Simulate outer circle")
 detector_count = st.sidebar.number_input('Detector Count', value=180)
 iterations = st.sidebar.number_input('Iterations', value=180)
+radial_length = st.sidebar.number_input('Radial Length', value=3.14)
 run_button = st.sidebar.button("Run CT simulation!")
 if run_button and input_image is not None:
     ss.showing_output = True
@@ -322,7 +314,7 @@ if input_image is not None and ss.showing_output:
 
     global prog_bar
     prog_bar = st.progress(0)
-    tomix = calculate_tomograph(io.imread(input_image, as_gray=True), is_filtered_checkbox, rescalle_intensity_checkbox)
+    tomix = calculate_tomograph(io.imread(input_image, as_gray=True),is_filtered_checkbox,rescalle_intensity_checkbox,simulate_outer_circle_checkbox,detector_count,iterations,radial_length)
     if input_image_checkbox:
         show_image(tomix.inputImg)
     selected_iteration = st.slider("Percent level of computing", 0, 100, 100,step=10)
@@ -343,5 +335,5 @@ else:
     st.text("Please input a file to start")
 
 if uploaded_dicom is not None:
-    st.write("Dicom photo:")
+
     readDicom(uploaded_dicom)
