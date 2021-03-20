@@ -50,7 +50,7 @@ def calcStatistics():
     file.close()
 
 
-def makeDicom(img, filename, patiantName, patientID, patientWeigth,patientSex, comment):
+def makeDicom(img, filename, patiantName, patientID, patientWeigth, patientSex, comment):
     # File meta info data elements
     file_meta = FileMetaDataset()
 
@@ -158,7 +158,8 @@ class Tomograf:
         self.sinogram = np.zeros((self.iterCount, self.n))
         self.outputImg = np.zeros(self.inputImg.shape)
         self.rescalledImg = np.zeros(self.inputImg.shape)
-        self.partialImgs = np.zeros((10, self.inputImg.shape[0], self.inputImg.shape[1]))
+        self.partialOutputImgs = []  # np.zeros((10, self.inputImg.shape[0], self.inputImg.shape[1]))
+        self.partialSinogramImgs = []
         self.lines = []
         self.kernel = self.calcKernel()
         print(self.inputImg.shape)
@@ -199,39 +200,38 @@ class Tomograf:
         self.rescalleIntensity = rescalle_intensity
         self.makeSinogram()
 
+    def rescalle_image(self, in_img):
+        # print("rescalling intensity")
+        float_img = in_img
+        p2, p98 = np.percentile(float_img, (1, 98))
+        img_rescalled = exp.rescale_intensity(
+            float_img,
+            in_range=(p2, p98),
+            out_range=(0, 1)
+        )
+        return img_rescalled
+
     def makeSinogram(self):
-        pom = self.iterCount // 10
-        pomCounter = 0
         for i in range(0, self.iterCount):
+            prog_bar.progress(i / self.iterCount)
             alpha = 2 * np.pi / self.iterCount * i
             self.doOneSingoramRow(i, alpha)
-            # if (i % pom == 0 and pomCounter < 10):
-            #   self.partialImgs[pomCounter] = self.outputImg
-            #  plt.imshow(self.partialImgs[pomCounter], cmap="gray")
-            # plt.show()
-            # pomCounter+=1
+            if i % (self.iterCount // 10) == 1:
+                if self.rescalleIntensity:
+                    self.partialOutputImgs.append(self.rescalle_image(self.outputImg))
+                    self.partialSinogramImgs.append(self.rescalle_image(self.sinogram))
+                else:
+                    self.partialOutputImgs.append(self.outputImg.copy())
+                    self.partialSinogramImgs.append(self.sinogram.copy())
 
-        if (self.rescalleIntensity):
-            print("rescalling intensity")
-            float_img = self.outputImg
-            p2, p98 = np.percentile(float_img, (1, 98))
-            img_rescalled = exp.rescale_intensity(
-                float_img,
-                in_range=(p2, p98),
-                out_range=(0, 1)
-            )
-            self.outputImg = img_rescalled
+        if self.rescalleIntensity:
+            self.partialOutputImgs.append(self.rescalle_image(self.outputImg))
+            self.partialSinogramImgs.append(self.rescalle_image(self.sinogram))
+        else:
+            self.partialOutputImgs.append(self.outputImg.copy())
+            self.partialSinogramImgs.append(self.sinogram.copy())
+        prog_bar.progress(1.0)
 
-            float_img = self.sinogram
-            p2, p98 = np.percentile(float_img, (1, 98))
-            img_rescalled = exp.rescale_intensity(
-                float_img,
-                in_range=(p2, p98),
-                out_range=(0, 1)
-            )
-            self.sinogram = img_rescalled
-        # plt.imshow(self.outputImg,cmap="gray")
-        # plt.show()
 
     def test1(self):
         emiter = self.calcEmiterPosition(0, np.min(self.inputImg.shape) // 2 - 1, self.inputImg.shape)
@@ -246,10 +246,10 @@ class Tomograf:
 
 import streamlit as st
 
-
 global tom
 
-@st.cache
+
+@st.cache #(suppress_st_warning=True)
 def calculate_tomograph(img=None, filter=False, rescalle=False):
     global tom
     if (img is not None):
@@ -259,10 +259,10 @@ def calculate_tomograph(img=None, filter=False, rescalle=False):
     tom.makeSinogramWithParams(filter, rescalle)
     return tom
 
-import os
-import base64
 
 def get_binary_file_downloader_html(bin_file, file_label='File'):
+    import os
+    import base64
     with open(bin_file, 'rb') as f:
         data = f.read()
     bin_str = base64.b64encode(data).decode()
@@ -273,54 +273,52 @@ def get_binary_file_downloader_html(bin_file, file_label='File'):
 # calcStatistics()
 
 # https://towardsdatascience.com/pagination-in-streamlit-82b62de9f62b
-ss = SessionState.get(page_number = 0, showing_output = False, var_2 = "Streamlit demo!")
+ss = SessionState.get(page_number=0, showing_output=False, var_2="Streamlit demo!")
 st.set_page_config(page_title="Symulator tomografu RO KL", page_icon="random")
 st.write("# Symulator tomografu RO KL")
 
 input_image = st.sidebar.file_uploader("Upload Files", type=['png', 'jpeg', 'jpg'])
-#input_image = io.imread("Kolo.jpg", as_gray=True)
 input_image_checkbox = st.sidebar.checkbox("Show input image")
 is_filtered_checkbox = st.sidebar.checkbox("Use Filter")
 rescalle_intensity_checkbox = st.sidebar.checkbox("Rescalle intensity")
-detector_count=st.sidebar.number_input('Detector Count',value=180)
-iterations=st.sidebar.number_input('Iterations',value=180)
-run_button = st.sidebar.button("Run!")
+detector_count = st.sidebar.number_input('Detector Count', value=180)
+iterations = st.sidebar.number_input('Iterations', value=180)
+run_button = st.sidebar.button("Run CT simulation!")
 if run_button and input_image is not None:
-    ss.showing_output=True
+    ss.showing_output = True
 
 # dicom information
-
-
-patient_id_input = st.sidebar.number_input('Patient ID',min_value=1,max_value=100000)
-patient_weight = st.sidebar.number_input('Weight',min_value=10.0,max_value=10000.0)
+patient_id_input = st.sidebar.number_input('Patient ID', min_value=1, max_value=100000)
+patient_weight = st.sidebar.number_input('Weight', min_value=10.0, max_value=10000.0)
 gender_input = st.sidebar.radio("Gender: ", ("Male", "Female"))
-first_name = st.sidebar.text_input("First name",value='Name')
-last_name = st.sidebar.text_input("Last name",value='Last name')
+first_name = st.sidebar.text_input("First name", value='Name')
+last_name = st.sidebar.text_input("Last name", value='Last name')
 date_of_birth = st.sidebar.date_input("date of birth")
+
+def show_image(item):
+    resized = skimage.transform.resize(item, (400, 400))
+    float_img = skimage.img_as_float(resized)
+    st.image(float_img, clamp=True)
 
 
 if input_image is not None and ss.showing_output:
 
-
-    #file_details = {"FileName": input_image.name, "FileType": input_image.type, "FileSize": input_image.size}
-    #st.write(file_details)
-    if input_image_checkbox:
-        st.image(input_image)
-    selected_iteration = st.slider("Iteration", 1, 100, 20)
-    st.write(selected_iteration)
-    print(is_filtered_checkbox, rescalle_intensity_checkbox)
+    global prog_bar
+    prog_bar = st.progress(0)
     tomix = calculate_tomograph(io.imread(input_image, as_gray=True), is_filtered_checkbox, rescalle_intensity_checkbox)
-
-    img = skimage.img_as_float(tomix.outputImg)
-    sinogram = skimage.img_as_float(tomix.sinogram)
-    st.image(skimage.transform.resize(sinogram, (600, 600)), clamp=True)
-    st.image(skimage.transform.resize(img, (600, 600)), clamp=True)
+    if input_image_checkbox:
+        show_image(tomix.inputImg)
+    selected_iteration = st.slider("Percent level of computing", 0, 100, 100,step=10)
+    index=selected_iteration // 10
+    print("partials: "+str(len(tomix.partialSinogramImgs)))
+    show_image(tomix.partialOutputImgs[index])
+    show_image(tomix.partialSinogramImgs[index])
 
     generate_dicom_button = st.sidebar.button("Generate Dicom file")
     if generate_dicom_button:
-        filename='CT_'+str(patient_id_input)+'_'+first_name+'_'+last_name+'.dicom'
+        filename = 'CT_' + str(patient_id_input) + '_' + first_name + '_' + last_name + '.dicom'
         makeDicom(tomix.outputImg, filename, first_name + ' ' + last_name, str(patient_id_input),
-                  patient_weight,'F','comment')
+                  patient_weight, 'F', 'comment')
         st.sidebar.markdown(get_binary_file_downloader_html(filename, 'Dicom File'),
                             unsafe_allow_html=True)
 
