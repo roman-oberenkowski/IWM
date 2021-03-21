@@ -17,6 +17,8 @@ import cv2
 
 
 def calcRMSE(img1, img2):
+    img1[img1 > 1] = 1
+    img2[img2 > 1] = 1
     temp = img1 - img2
     temp = temp * temp
     return math.sqrt(np.mean(temp))
@@ -69,8 +71,8 @@ def makeDicom(img, filename, patiantName, patientID, patientWeigth, patientSex, 
     ds.ImageType = ['ORIGINAL', 'PRIMARY', 'AXIAL']
 
     dt = datetime.datetime.now()
-    ds.ContentDate = dt.strftime('%Y%m%d')
-    timeStr = dt.strftime('%H%M%S.%f')  # long format with micro seconds
+    ds.ContentDate = dt.strftime('%Y-%m-%d')
+    timeStr = dt.strftime('%H:%M')  # long format with micro seconds
     ds.ContentTime = timeStr
 
     ds.PatientName = patiantName
@@ -126,6 +128,8 @@ def readDicom(filename):
     st.write(f'Weight: {ds.PatientWeight}kg')
     st.write(f'Sex: {ds.PatientSex}')
     st.write(f'Comment: {ds.ImageComments}')
+    st.write(f'Date: {ds.ContentDate}')
+    st.write(f'Time: {ds.ContentTime}')
 
 
 
@@ -191,7 +195,7 @@ class Tomograf:
         return (y, x)
 
     def doOneSinogramCell(self, i, iterationNumber, emiterPosition, alpha):
-        detectorPos = self.calcDetectorPosition(alpha, np.min(self.inputImg.shape) // 2, i)
+        detectorPos = self.calcDetectorPosition(alpha, np.min(self.inputImg.shape) // 2 - 1, i)
         self.lines.append(skimage.draw.line_nd(emiterPosition, detectorPos))
         res = np.mean(self.inputImg[self.lines[-1]])
         # self.outputImg[line] +=res
@@ -235,12 +239,13 @@ class Tomograf:
                     self.partialOutputImgs.append(self.outputImg.copy())
                     self.partialSinogramImgs.append(self.sinogram.copy())
 
-        if self.rescalleIntensity:
-            self.partialOutputImgs.append(self.rescalle_image(self.outputImg))
-            self.partialSinogramImgs.append(self.rescalle_image(self.sinogram))
-        else:
-            self.partialOutputImgs.append(self.outputImg.copy())
-            self.partialSinogramImgs.append(self.sinogram.copy())
+        while len(self.partialSinogramImgs)<11:
+            if self.rescalleIntensity:
+                self.partialOutputImgs.append(self.rescalle_image(self.outputImg))
+                self.partialSinogramImgs.append(self.rescalle_image(self.sinogram))
+            else:
+                self.partialOutputImgs.append(self.outputImg.copy())
+                self.partialSinogramImgs.append(self.sinogram.copy())
         prog_bar.progress(1.0)
         self.outputImg=self.rescalle_image(self.outputImg)
 
@@ -335,5 +340,4 @@ else:
     st.text("Please input a file to start")
 
 if uploaded_dicom is not None:
-
     readDicom(uploaded_dicom)
