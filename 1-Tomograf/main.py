@@ -165,9 +165,9 @@ class Tomograf:
 
         if self.simulate_outer_circle:
             (x, y) = self.inputImg.shape
-            print(self.inputImg.shape)
+            # print(self.inputImg.shape)
             offset = int((math.sqrt(2) * x) // 4)
-            print(offset)
+            # print(offset)
             self.inputImg = cv2.copyMakeBorder(self.inputImg, offset, offset, offset, offset, cv2.BORDER_CONSTANT,
                                                value=0)
 
@@ -181,10 +181,9 @@ class Tomograf:
         self.partialSinogramImgs = []
         self.lines = []
         self.kernel = self.calcKernel()
-        print(self.inputImg.shape)
+        # print(self.inputImg.shape)
 
     def calcEmiterPosition(self, alpha, r, imgShape):
-        # alpha -= np.pi / 2
         x = r * math.cos(alpha) + imgShape[1] // 2
         y = r * math.sin(alpha) * -1 + imgShape[0] // 2
         return (y, x)
@@ -324,10 +323,16 @@ if input_image is not None and ss.showing_output:
         show_image(tomix.inputImg)
     selected_iteration = st.slider("Percent level of computing", 0, 100, 100,step=10)
     index=selected_iteration // 10
-    print("partials: "+str(len(tomix.partialSinogramImgs)))
+    # print("partials: "+str(len(tomix.partialSinogramImgs)))
     show_image(tomix.partialOutputImgs[index])
     show_image(tomix.partialSinogramImgs[index])
+    results=[calcRMSE(tomix.inputImg,curr_img) for curr_img in tomix.partialOutputImgs]
 
+    fig, ax = plt.subplots()
+    plt.ylim([0.0, 1.0])
+    plt.plot([i for i in range(0, 11)], results)
+
+    st.pyplot(fig,dpi=200)
     generate_dicom_button = st.sidebar.button("Generate Dicom file")
     if generate_dicom_button:
         filename = 'CT_' + str(patient_id_input) + '_' + first_name + '_' + last_name + '.dicom'
