@@ -16,6 +16,7 @@ from skimage import data
 from multiprocessing import Pool
 import imblearn
 
+
 def loadImageNr(id, show=False):
     img_list = os.listdir("./all/images")
     if (id >= len(img_list)):
@@ -33,16 +34,6 @@ def loadImageNr(id, show=False):
     return (img, exp, fov)
 
 
-if __name__ == '__main__':
-    (img, exp, fov) = loadImageNr(43, show=False)
-    resize = False
-    target_width = 500
-    if (resize):
-        img = imutils.resize(img, width=target_width)
-        exp = imutils.resize(exp, width=target_width)
-        fov = imutils.resize(fov, width=target_width)
-
-
 def sliding_window(image, fov, exp, processed_data, stepSize, windowSize):
     dim = image.shape
     dim_x = dim[1]
@@ -53,7 +44,8 @@ def sliding_window(image, fov, exp, processed_data, stepSize, windowSize):
         for x in range(0, dim_x, stepSize):
             if x + windowSize >= dim_x:  # right border - discard
                 continue
-            if fov[y, x]>0.5 and fov[y + windowSize, x + windowSize]>0.5 and fov[y, x + windowSize]>0.5 and fov[y + windowSize, x]>0.5:
+            if fov[y, x] > 0.5 and fov[y + windowSize, x + windowSize] > 0.5 and fov[y, x + windowSize] > 0.5 and fov[
+                y + windowSize, x] > 0.5:
                 # all corners inside FOV
                 xc = x + windowSize // 2
                 yc = y + windowSize // 2
@@ -64,77 +56,125 @@ def calculate_metrics(region):
     v = np.var(region.flatten())
     m = np.mean(region.flatten())
     mom = moment(region, 2).flatten()
-    res=[v, m]
+    res = [v, m]
     res.extend(mom)
     return res
 
+
+class WTF_classifer():
+    def __init__(self):
+        self.window_size = 5
+        self.shape_before_patches = None
+        self.img = None
+        self.exp = None
+        self.fov = None
+        self.clf = None
+
+    def load_data(self, input_data):
+        self.img = input_data[0]
+        self.exp = input_data[1]
+        self.fov = input_data[2]
+
+    def cut_into_patches(self, img):
+        input_img = img.copy()
+        window_size = self.window_size
+        self.shape_before_patches = [input_img.shape[0] - window_size + 1, input_img.shape[1] - window_size + 1, window_size,
+                             window_size]
+        strides = 2 * input_img.strides
+        patches = np.lib.stride_tricks.as_strided(input_img, shape=self.shape_before_patches, strides=strides)
+        patches = patches.reshape(-1, window_size, window_size)
+        return patches
+
+    def calculate_patches_metrics(self, patches_local):
+        print("calculating metrics for all pixels...")
+        with Pool() as pool:
+            temp_res = pool.map(calculate_metrics, patches_local, 25000)
+            processed_data_unshaped = np.array(temp_res)
+        processed_data_local = processed_data_unshaped.reshape(
+            self.shape_before_patches[0:2] + [len(processed_data_unshaped[0])])
+        processed_data_local = np.pad(processed_data_local, (
+            (self.window_size // 2, self.window_size // 2), (self.window_size // 2, self.window_size // 2), (0, 0)),
+                                'constant')
+        return processed_data_local
+
+    def prepare_data_for_learning(self, processed_data):
+        print("preparing data for learning")
+        correct_answers = []
+        inputs = []
+        for (xc, yc, ans, metrics) in sliding_window(self.img, self.fov, self.exp, processed_data, 1, self.window_size):
+            correct_answer = ans > 0
+            correct_answers.append(correct_answer)
+            inputs.append(metrics)
+
+        print(" samples: ", len(inputs))
+        undersample = imblearn.under_sampling.RandomUnderSampler(sampling_strategy='auto')
+        X_under, y_under = undersample.fit_resample(inputs, correct_answers)
+        print(" undersampled len: ", len(X_under))
+        return X_under, y_under
+
+    def learn(self, inputs, correct_answers):
+        print("learning (fitting)...")
+        self.clf = RandomForestClassifier(n_jobs=-1)
+        self.clf.fit(inputs, correct_answers)
+
+    def prepare_data_to_predict(self, processed_data):
+        print("preparing data to predict...")
+        inputs_to_predict = []
+        cordinates = []
+        for (xc, yc, ans, metrics) in sliding_window(self.img, self.fov, self.exp, processed_data, 1, self.window_size):
+            inputs_to_predict.append(metrics)
+            cordinates.append((xc, yc))
+        return cordinates, inputs_to_predict
+
+    def predict(self, coordinates, inputs_to_predict):
+        print("predicting...")
+        answers = self.clf.predict_proba(inputs_to_predict)
+        ans_cord = zip(answers, coordinates)
+        print("writing results...")
+        return ans_cord
+
+    def produce_predicted_image(self, ans_cord):
+        predicted_image = np.zeros(fov.shape, dtype=bool)
+        for answer, coordinates in ans_cord:
+            xc, yc = coordinates
+            if (answer[1] > 0.7):
+                val = True
+            else:
+                val = False
+            predicted_image[yc, xc] = val
+        return predicted_image
+
+    def postprocess_and_display_image(self, predicted_image):
+        print("done...")
+        plt.imshow(self.exp, cmap='gray')
+        plt.show()
+        plt.imshow(predicted_image, cmap='gray')
+        plt.show()
+        predicted_image = skimage.morphology.remove_small_objects(predicted_image, min_size=128, connectivity=1,
+                                                                  in_place=False)
+        plt.imshow(predicted_image, cmap='gray')
+        plt.show()
+        cv2.imshow("XD", imutils.resize(img_as_float(predicted_image), width=900))
+        cv2.waitKey(0)
+
+
 if __name__ == '__main__':
-    input_img = img.copy()
-    img_size = input_img.shape
-    window_size = 5  # window size i.e. here is 5x5 window
-    shape = [input_img.shape[0] - window_size + 1, input_img.shape[1] - window_size + 1, window_size, window_size]
-    strides = 2 * input_img.strides
-    patches = np.lib.stride_tricks.as_strided(input_img, shape=shape, strides=strides)
-    patches = patches.reshape(-1, window_size, window_size)
-    print(len(patches))
-    print("calculating metrics for all pixels...")
-    with Pool() as pool:
-        temp_res = pool.map(calculate_metrics, patches, 25000)
-        processed_data_unshaped = np.array(temp_res)
-    processed_data = processed_data_unshaped.reshape(shape[0:2] + [len(processed_data_unshaped[0])])
-    processed_data = np.pad(processed_data,
-                           ((window_size // 2, window_size // 2), (window_size // 2, window_size // 2), (0, 0)),
-                           'constant')
-    print("preparing data for learning")
-    correct_answers = []
-    inputs = []
-    for (xc, yc, ans, metrics) in sliding_window(img, fov, exp, processed_data, 1, window_size):
-        correct_answer = ans > 0
-        correct_answers.append(correct_answer)
-        inputs.append(metrics)
+    (img, exp, fov) = loadImageNr(43, show=False)
+    resize = True
+    target_width = 500
+    if resize:
+        img = imutils.resize(img, width=target_width)
+        exp = imutils.resize(exp, width=target_width)
+        fov = imutils.resize(fov, width=target_width)
 
-    print(" samples: ", len(inputs))
-    print("learning (fitting)...")
-
-    undersample = imblearn.under_sampling.RandomUnderSampler(sampling_strategy='auto')
-    X_under,y_under=undersample.fit_resample(inputs,correct_answers)
-    print(" undersampled: ",len(X_under))
-    clf = RandomForestClassifier(n_jobs=-1)
-    clf.fit(X_under,y_under)
-
-    # predicting
-    print("preparing data to predict...")
-    predicted_image = np.zeros(fov.shape,dtype=bool)
-    inputs_to_predict = []
-    cordinates = []
-
-    for (xc, yc, ans, metrics) in sliding_window(img, fov, exp, processed_data, 1, window_size):
-        inputs_to_predict.append(metrics)
-        cordinates.append((xc, yc))
-
-    print("predicting...")
-    answers = clf.predict_proba(inputs_to_predict)
-    ans_cord = zip(answers, cordinates)
-    print(len(answers))
-    print(answers,end=' ')
-    print("writing results...")
-
-    for answer,cordinates in ans_cord:
-        xc, yc = cordinates
-        if(answer[1]>0.7):
-            val=True
-        else:
-            val=False
-        predicted_image[yc, xc] = val
-
-    print("done...")
-    plt.imshow(exp, cmap='gray')
-    plt.show()
-    plt.imshow(predicted_image,cmap='gray')
-    plt.show()
-    predicted_image= skimage.morphology.remove_small_objects(predicted_image, min_size=128, connectivity=1, in_place=False)
-    plt.imshow(predicted_image, cmap='gray')
-    plt.show()
-    cv2.imshow("XD", imutils.resize(img_as_float(predicted_image), width=900))
-    cv2.waitKey(0)
+    classifier = WTF_classifer()
+    classifier.load_data((img, exp, fov))
+    patches = classifier.cut_into_patches(img)
+    processed_data = classifier.calculate_patches_metrics(patches)
+    inputs_answers=classifier.prepare_data_for_learning(processed_data)
+    classifier.learn(*inputs_answers)
+    cords_inputs= classifier.prepare_data_to_predict(processed_data)
+    ans_cord=classifier.predict(*cords_inputs)
+    predicted_image=classifier.produce_predicted_image(ans_cord)
+    classifier.postprocess_and_display_image(predicted_image)
 
