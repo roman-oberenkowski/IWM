@@ -84,6 +84,7 @@ class WTF_classifer():
         strides = 2 * input_img.strides
         patches = np.lib.stride_tricks.as_strided(input_img, shape=self.shape_before_patches, strides=strides)
         patches = patches.reshape(-1, window_size, window_size)
+        print("patches len: ",len(patches))
         return patches
 
     def calculate_patches_metrics(self, patches_local):
@@ -107,10 +108,10 @@ class WTF_classifer():
             correct_answers.append(correct_answer)
             inputs.append(metrics)
 
-        print(" samples: ", len(inputs))
+        print(" samples:      ", len(inputs))
         undersample = imblearn.under_sampling.RandomUnderSampler(sampling_strategy='auto')
         X_under, y_under = undersample.fit_resample(inputs, correct_answers)
-        print(" undersampled len: ", len(X_under))
+        print(" undersampled: ", len(X_under))
         return X_under, y_under
 
     def learn(self, inputs, correct_answers):
@@ -138,7 +139,7 @@ class WTF_classifer():
         predicted_image = np.zeros(fov.shape, dtype=bool)
         for answer, coordinates in ans_cord:
             xc, yc = coordinates
-            if (answer[1] > 0.7):
+            if (answer[1] > 0.5):
                 val = True
             else:
                 val = False
@@ -161,26 +162,33 @@ class WTF_classifer():
 
 if __name__ == '__main__':
 
-    (img, exp, fov) = loadImageNr(43, show=False)
-    (img_a, exp_a, fov_a) = loadImageNr(42, show=False)
+    (img, exp, fov) = loadImageNr(0, show=False)
+    (img_a, exp_a, fov_a) = loadImageNr(2, show=False)
     resize = False
     target_width = 500
     if resize:
         img = imutils.resize(img, width=target_width)
         exp = imutils.resize(exp, width=target_width)
         fov = imutils.resize(fov, width=target_width)
+        img_a = imutils.resize(img_a, width=target_width)
+        exp_a = imutils.resize(exp_a, width=target_width)
+        fov_a = imutils.resize(fov_a, width=target_width)
 
     classifier = WTF_classifer()
+    #learn
     classifier.load_data((img, exp, fov))
     patches = classifier.cut_into_patches()
     processed_data = classifier.calculate_patches_metrics(patches)
     del patches
     inputs_answers = classifier.prepare_data_for_learning(processed_data)
+    del processed_data
     classifier.learn(*inputs_answers)
     del inputs_answers
-
-
-
+    #predict
+    classifier.load_data((img_a, exp_a, fov_a))
+    patches = classifier.cut_into_patches()
+    processed_data = classifier.calculate_patches_metrics(patches)
+    del patches
     cords_inputs = classifier.prepare_data_to_predict(processed_data)
     del processed_data
     ans_cord = classifier.predict(*cords_inputs)
