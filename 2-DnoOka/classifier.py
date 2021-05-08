@@ -4,6 +4,7 @@ import os
 import numpy as np
 from skimage.util import img_as_float, img_as_uint, img_as_ubyte
 from skimage.exposure import rescale_intensity
+import skimage.morphology
 import imutils
 import cv2
 import time
@@ -13,7 +14,7 @@ from sklearn.ensemble import RandomForestClassifier
 import matplotlib.pyplot as plt
 from skimage import data
 from multiprocessing import Pool
-
+import imblearn
 
 def loadImageNr(id, show=False):
     img_list = os.listdir("./all/images")
@@ -33,9 +34,9 @@ def loadImageNr(id, show=False):
 
 
 if __name__ == '__main__':
-    (img, exp, fov) = loadImageNr(44, show=False)
+    (img, exp, fov) = loadImageNr(43, show=False)
     resize = False
-    target_width = 200
+    target_width = 500
     if (resize):
         img = imutils.resize(img, width=target_width)
         exp = imutils.resize(exp, width=target_width)
@@ -59,16 +60,17 @@ def sliding_window(image, fov, exp, processed_data, stepSize, windowSize):
                 yield (xc, yc, exp[yc, xc], processed_data[yc, xc])
 
 
-def some_func(region):
+def calculate_metrics(region):
     v = np.var(region.flatten())
-    m = moment(region.flatten(), 2)
-    return [v, m]
-
+    m = np.mean(region.flatten())
+    mom = moment(region, 2).flatten()
+    res=[v, m]
+    res.extend(mom)
+    return res
 
 if __name__ == '__main__':
     input_img = img.copy()
     img_size = input_img.shape
-    metrics_length = 2
     window_size = 5  # window size i.e. here is 5x5 window
     shape = [input_img.shape[0] - window_size + 1, input_img.shape[1] - window_size + 1, window_size, window_size]
     strides = 2 * input_img.strides
@@ -76,14 +78,13 @@ if __name__ == '__main__':
     patches = patches.reshape(-1, window_size, window_size)
     print(len(patches))
     print("calculating metrics for all pixels...")
-    with Pool(processes=16) as pool:
-        temp_res = pool.map(some_func, patches, 25000)
+    with Pool() as pool:
+        temp_res = pool.map(calculate_metrics, patches, 25000)
         processed_data_unshaped = np.array(temp_res)
-    processed_data = processed_data_unshaped.reshape(shape[0:2] + [metrics_length])
+    processed_data = processed_data_unshaped.reshape(shape[0:2] + [len(processed_data_unshaped[0])])
     processed_data = np.pad(processed_data,
-                            ((window_size // 2, window_size // 2), (window_size // 2, window_size // 2), (0, 0)),
-                            'constant')
-
+                           ((window_size // 2, window_size // 2), (window_size // 2, window_size // 2), (0, 0)),
+                           'constant')
     print("preparing data for learning")
     correct_answers = []
     inputs = []
@@ -92,15 +93,18 @@ if __name__ == '__main__':
         correct_answers.append(correct_answer)
         inputs.append(metrics)
 
-    print("samples: ", len(inputs))
+    print(" samples: ", len(inputs))
     print("learning (fitting)...")
 
+    undersample = imblearn.under_sampling.RandomUnderSampler(sampling_strategy='auto')
+    X_under,y_under=undersample.fit_resample(inputs,correct_answers)
+    print(" undersampled: ",len(X_under))
     clf = RandomForestClassifier(n_jobs=-1)
-    clf.fit(inputs, correct_answers)
+    clf.fit(X_under,y_under)
 
     # predicting
     print("preparing data to predict...")
-    predicted_image = np.zeros(fov.shape,dtype=np.float64)
+    predicted_image = np.zeros(fov.shape,dtype=bool)
     inputs_to_predict = []
     cordinates = []
 
@@ -109,28 +113,29 @@ if __name__ == '__main__':
         cordinates.append((xc, yc))
 
     print("predicting...")
-    answers = clf.predict(inputs_to_predict)
+    answers = clf.predict_proba(inputs_to_predict)
     ans_cord = zip(answers, cordinates)
     print(len(answers))
     print(answers,end=' ')
     print("writing results...")
 
-    print("Positive answers:",len(answers[answers]))
-    print("Negative answers:", len(answers[~answers]))
-    print("answers",len(answers))
+    #print("Positive answers:",len(answers[answers]))
+    #print("Negative answers:", len(answers[~answers]))
+    #print("answers",len(answers))
     for answer,cordinates in ans_cord:
         xc, yc = cordinates
-        if answer:
-            predicted_image[yc, xc] = 1.0
+        if(answer[1]>0.6):
+            val=True
         else:
-            predicted_image[yc, xc] = 0.0
-
-
+            val=False
+        predicted_image[yc, xc] = val
 
     print("done...")
-    skimage.io.imshow(predicted_image,cmap='gray')
-    skimage.io.show()
-    skimage.io.imshow(exp, cmap='gray')
-    skimage.io.show()
-    cv2.imshow("XD", imutils.resize(predicted_image, width=900))
+    plt.imshow(predicted_image,cmap='gray')
+    plt.show()
+    plt.imshow(exp, cmap='gray')
+    plt.show()
+    predicted_image= skimage.morphology.remove_small_objects(predicted_image, min_size=128, connectivity=1, in_place=False)
+    cv2.imshow("XD", imutils.resize(img_as_float(predicted_image), width=900))
     cv2.waitKey(0)
+
