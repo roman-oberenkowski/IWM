@@ -2,7 +2,7 @@ import skimage.io
 import skimage.color
 import os
 import numpy as np
-from skimage.util import img_as_float, img_as_uint, img_as_ubyte
+from skimage.util import img_as_float, img_as_uint, img_as_ubyte, img_as_bool
 from skimage.exposure import rescale_intensity
 import skimage.morphology
 import imutils
@@ -84,35 +84,75 @@ class WTF_classifer():
         strides = 2 * input_img.strides
         patches = np.lib.stride_tricks.as_strided(input_img, shape=self.shape_before_patches, strides=strides)
         patches = patches.reshape(-1, window_size, window_size)
-        print("patches len: ",len(patches))
+        print("patches len: ", len(patches))
         return patches
+
+    def cut_into_patches_learning(self):
+        input_img = self.img
+        window_size = self.window_size
+        self.shape_before_patches = [input_img.shape[0] - window_size + 1, input_img.shape[1] - window_size + 1,
+                                     window_size,
+                                     window_size]
+        strides = 2 * input_img.strides
+        patches = np.lib.stride_tricks.as_strided(input_img, shape=self.shape_before_patches, strides=strides)
+        # patches = patches.reshape(-1, window_size, window_size)
+        print("patches shape: ", patches.shape)
+        return patches
+
+    def filter_patches(self, patches):
+        half_win = self.window_size // 2
+        kernel = np.ones((3, 3), np.uint8)
+        fov_smaller = self.fov.copy()
+        fov_smaller = cv2.erode(fov_smaller, kernel)
+        fov_smaller = fov_smaller[half_win:-half_win, half_win:-half_win]
+        exp_smaller = self.exp.copy()
+        exp_smaller = exp_smaller[half_win:-half_win, half_win:-half_win]
+        patches = patches[fov_smaller > 0.5]
+        indices = np.array([i for i in range(patches.shape[0])])
+        indices = indices.reshape((-1, 1))
+        exp_smaller = exp_smaller[fov_smaller > 0.5]
+        print("fov filtered_patches shape ", patches.shape)
+        undersample = imblearn.under_sampling.RandomUnderSampler(sampling_strategy='auto')
+        print(exp_smaller.shape)
+        print(patches.shape)
+        indices, y_under = undersample.fit_resample(indices, exp_smaller > 0.5)
+        patches_from_indices = np.array([patches[i[0]] for i in indices])
+        print("undersamlped shape ", patches_from_indices.shape)
+        return patches_from_indices, y_under
 
     def calculate_patches_metrics(self, patches_local):
         print("calculating metrics for all pixels...")
         with Pool() as pool:
-            temp_res = pool.map(calculate_metrics, patches_local, 25000)
-            processed_data_unshaped = np.array(temp_res)
+            processed_data_unshaped = np.array(pool.map(calculate_metrics, patches_local, 25000))
         processed_data_local = processed_data_unshaped.reshape(
             self.shape_before_patches[0:2] + [len(processed_data_unshaped[0])])
+        del processed_data_unshaped
         processed_data_local = np.pad(processed_data_local, (
             (self.window_size // 2, self.window_size // 2), (self.window_size // 2, self.window_size // 2), (0, 0)),
                                       'constant')
         return processed_data_local
 
-    def prepare_data_for_learning(self, processed_data):
-        print("preparing data for learning")
-        correct_answers = []
-        inputs = []
-        for (xc, yc, ans, metrics) in sliding_window(self.img, self.fov, self.exp, processed_data, 1, self.window_size):
-            correct_answer = ans > 0
-            correct_answers.append(correct_answer)
-            inputs.append(metrics)
+    def calculate_patches_metrics_learning(self, patches_local):
+        print("calculating metrics for some pixels (learning mode)...")
+        with Pool() as pool:
+            processed_data_unshaped = np.array(pool.map(calculate_metrics, patches_local, 25000))
+        print("cpml ", processed_data_unshaped.shape)
+        return processed_data_unshaped
 
-        print(" samples:      ", len(inputs))
-        undersample = imblearn.under_sampling.RandomUnderSampler(sampling_strategy='auto')
-        X_under, y_under = undersample.fit_resample(inputs, correct_answers)
-        print(" undersampled: ", len(X_under))
-        return X_under, y_under
+    # def prepare_data_for_learning(self, processed_data):
+    #     print("preparing data for learning")
+    #     correct_answers = []
+    #     inputs = []
+    #     for (xc, yc, ans, metrics) in sliding_window(self.img, self.fov, self.exp, processed_data, 1, self.window_size):
+    #         correct_answer = ans > 0
+    #         correct_answers.append(correct_answer)
+    #         inputs.append(metrics)
+    #
+    #     print(" samples:      ", len(inputs))
+    #     undersample = imblearn.under_sampling.RandomUnderSampler(sampling_strategy='auto')
+    #     X_under, y_under = undersample.fit_resample(inputs, correct_answers)
+    #     print(" undersampled: ", len(X_under))
+    #     return X_under, y_under
 
     def learn(self, inputs, correct_answers):
         print("learning (fitting)...")
@@ -136,7 +176,7 @@ class WTF_classifer():
         return ans_cord
 
     def produce_predicted_image(self, ans_cord):
-        predicted_image = np.zeros(fov.shape, dtype=bool)
+        predicted_image = np.zeros(self.img.shape, dtype=bool)
         for answer, coordinates in ans_cord:
             xc, yc = coordinates
             if (answer[1] > 0.5):
@@ -161,11 +201,10 @@ class WTF_classifer():
 
 
 if __name__ == '__main__':
-
     (img, exp, fov) = loadImageNr(0, show=False)
-    (img_a, exp_a, fov_a) = loadImageNr(2, show=False)
+    (img_a, exp_a, fov_a) = loadImageNr(0, show=False)
     resize = False
-    target_width = 500
+    target_width = 1000
     if resize:
         img = imutils.resize(img, width=target_width)
         exp = imutils.resize(exp, width=target_width)
@@ -175,16 +214,15 @@ if __name__ == '__main__':
         fov_a = imutils.resize(fov_a, width=target_width)
 
     classifier = WTF_classifer()
-    #learn
+    # learn
     classifier.load_data((img, exp, fov))
-    patches = classifier.cut_into_patches()
-    processed_data = classifier.calculate_patches_metrics(patches)
-    del patches
-    inputs_answers = classifier.prepare_data_for_learning(processed_data)
-    del processed_data
-    classifier.learn(*inputs_answers)
-    del inputs_answers
-    #predict
+    patches, y = classifier.filter_patches(classifier.cut_into_patches_learning())
+    X = classifier.calculate_patches_metrics_learning(patches)
+    classifier.learn(X, y)
+    del patches, y
+    del img, exp, fov
+
+    # predict
     classifier.load_data((img_a, exp_a, fov_a))
     patches = classifier.cut_into_patches()
     processed_data = classifier.calculate_patches_metrics(patches)
