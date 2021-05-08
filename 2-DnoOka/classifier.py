@@ -119,23 +119,22 @@ if __name__ == '__main__':
     print(answers,end=' ')
     print("writing results...")
 
-    #print("Positive answers:",len(answers[answers]))
-    #print("Negative answers:", len(answers[~answers]))
-    #print("answers",len(answers))
     for answer,cordinates in ans_cord:
         xc, yc = cordinates
-        if(answer[1]>0.6):
+        if(answer[1]>0.7):
             val=True
         else:
             val=False
         predicted_image[yc, xc] = val
 
     print("done...")
-    plt.imshow(predicted_image,cmap='gray')
-    plt.show()
     plt.imshow(exp, cmap='gray')
     plt.show()
+    plt.imshow(predicted_image,cmap='gray')
+    plt.show()
     predicted_image= skimage.morphology.remove_small_objects(predicted_image, min_size=128, connectivity=1, in_place=False)
+    plt.imshow(predicted_image, cmap='gray')
+    plt.show()
     cv2.imshow("XD", imutils.resize(img_as_float(predicted_image), width=900))
     cv2.waitKey(0)
 
