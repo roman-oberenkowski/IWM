@@ -113,8 +113,6 @@ class WTF_classifer():
         exp_smaller = exp_smaller[fov_smaller > 0.5]
         print("fov filtered_patches shape ", patches.shape)
         undersample = imblearn.under_sampling.RandomUnderSampler(sampling_strategy='auto')
-        print(exp_smaller.shape)
-        print(patches.shape)
         indices, y_under = undersample.fit_resample(indices, exp_smaller > 0.5)
         patches_from_indices = np.array([patches[i[0]] for i in indices])
         print("undersamlped shape ", patches_from_indices.shape)
@@ -136,27 +134,11 @@ class WTF_classifer():
         print("calculating metrics for some pixels (learning mode)...")
         with Pool() as pool:
             processed_data_unshaped = np.array(pool.map(calculate_metrics, patches_local, 25000))
-        print("cpml ", processed_data_unshaped.shape)
         return processed_data_unshaped
-
-    # def prepare_data_for_learning(self, processed_data):
-    #     print("preparing data for learning")
-    #     correct_answers = []
-    #     inputs = []
-    #     for (xc, yc, ans, metrics) in sliding_window(self.img, self.fov, self.exp, processed_data, 1, self.window_size):
-    #         correct_answer = ans > 0
-    #         correct_answers.append(correct_answer)
-    #         inputs.append(metrics)
-    #
-    #     print(" samples:      ", len(inputs))
-    #     undersample = imblearn.under_sampling.RandomUnderSampler(sampling_strategy='auto')
-    #     X_under, y_under = undersample.fit_resample(inputs, correct_answers)
-    #     print(" undersampled: ", len(X_under))
-    #     return X_under, y_under
 
     def learn(self, inputs, correct_answers):
         print("learning (fitting)...")
-        self.clf = RandomForestClassifier(n_jobs=-1)
+        self.clf = RandomForestClassifier(n_jobs=-1,max_depth=25)
         self.clf.fit(inputs, correct_answers)
 
     def prepare_data_to_predict(self, processed_data):
@@ -179,7 +161,7 @@ class WTF_classifer():
         predicted_image = np.zeros(self.img.shape, dtype=bool)
         for answer, coordinates in ans_cord:
             xc, yc = coordinates
-            if (answer[1] > 0.5):
+            if (answer[1] > 0.6):
                 val = True
             else:
                 val = False
@@ -201,32 +183,36 @@ class WTF_classifer():
 
 
 if __name__ == '__main__':
-    (img, exp, fov) = loadImageNr(0, show=False)
+    # (img, exp, fov) = loadImageNr(0, show=False)
     (img_a, exp_a, fov_a) = loadImageNr(0, show=False)
-    resize = False
-    target_width = 1000
-    if resize:
-        img = imutils.resize(img, width=target_width)
-        exp = imutils.resize(exp, width=target_width)
-        fov = imutils.resize(fov, width=target_width)
-        img_a = imutils.resize(img_a, width=target_width)
-        exp_a = imutils.resize(exp_a, width=target_width)
-        fov_a = imutils.resize(fov_a, width=target_width)
+    # resize = False
+    # target_width = 1000
+    # if resize:
+    #     img = imutils.resize(img, width=target_width)
+    #     exp = imutils.resize(exp, width=target_width)
+    #     fov = imutils.resize(fov, width=target_width)
+    #     img_a = imutils.resize(img_a, width=target_width)
+    #     exp_a = imutils.resize(exp_a, width=target_width)
+    #     fov_a = imutils.resize(fov_a, width=target_width)
 
     classifier = WTF_classifer()
     # learn
-    classifier.load_data((img, exp, fov))
-    patches, y = classifier.filter_patches(classifier.cut_into_patches_learning())
-    X = classifier.calculate_patches_metrics_learning(patches)
+    X=[]
+    y=[]
+    for img_nr in [3,23,9]:
+        (img, exp, fov) = loadImageNr(img_nr, show=False)
+        classifier.load_data((img, exp, fov))
+        patches, y_part = classifier.filter_patches(classifier.cut_into_patches_learning())
+        X_part = classifier.calculate_patches_metrics_learning(patches)
+        X.extend(X_part)
+        y.extend(y_part)
     classifier.learn(X, y)
     del patches, y
     del img, exp, fov
 
     # predict
     classifier.load_data((img_a, exp_a, fov_a))
-    patches = classifier.cut_into_patches()
-    processed_data = classifier.calculate_patches_metrics(patches)
-    del patches
+    processed_data = classifier.calculate_patches_metrics(classifier.cut_into_patches())
     cords_inputs = classifier.prepare_data_to_predict(processed_data)
     del processed_data
     ans_cord = classifier.predict(*cords_inputs)
