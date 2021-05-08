@@ -75,11 +75,12 @@ class WTF_classifer():
         self.exp = input_data[1]
         self.fov = input_data[2]
 
-    def cut_into_patches(self, img):
-        input_img = img.copy()
+    def cut_into_patches(self):
+        input_img = self.img
         window_size = self.window_size
-        self.shape_before_patches = [input_img.shape[0] - window_size + 1, input_img.shape[1] - window_size + 1, window_size,
-                             window_size]
+        self.shape_before_patches = [input_img.shape[0] - window_size + 1, input_img.shape[1] - window_size + 1,
+                                     window_size,
+                                     window_size]
         strides = 2 * input_img.strides
         patches = np.lib.stride_tricks.as_strided(input_img, shape=self.shape_before_patches, strides=strides)
         patches = patches.reshape(-1, window_size, window_size)
@@ -94,7 +95,7 @@ class WTF_classifer():
             self.shape_before_patches[0:2] + [len(processed_data_unshaped[0])])
         processed_data_local = np.pad(processed_data_local, (
             (self.window_size // 2, self.window_size // 2), (self.window_size // 2, self.window_size // 2), (0, 0)),
-                                'constant')
+                                      'constant')
         return processed_data_local
 
     def prepare_data_for_learning(self, processed_data):
@@ -150,7 +151,7 @@ class WTF_classifer():
         plt.show()
         plt.imshow(predicted_image, cmap='gray')
         plt.show()
-        predicted_image = skimage.morphology.remove_small_objects(predicted_image, min_size=128, connectivity=1,
+        predicted_image = skimage.morphology.remove_small_objects(predicted_image, min_size=64, connectivity=2,
                                                                   in_place=False)
         plt.imshow(predicted_image, cmap='gray')
         plt.show()
@@ -159,8 +160,10 @@ class WTF_classifer():
 
 
 if __name__ == '__main__':
+
     (img, exp, fov) = loadImageNr(43, show=False)
-    resize = True
+    (img_a, exp_a, fov_a) = loadImageNr(42, show=False)
+    resize = False
     target_width = 500
     if resize:
         img = imutils.resize(img, width=target_width)
@@ -169,12 +172,19 @@ if __name__ == '__main__':
 
     classifier = WTF_classifer()
     classifier.load_data((img, exp, fov))
-    patches = classifier.cut_into_patches(img)
+    patches = classifier.cut_into_patches()
     processed_data = classifier.calculate_patches_metrics(patches)
-    inputs_answers=classifier.prepare_data_for_learning(processed_data)
+    del patches
+    inputs_answers = classifier.prepare_data_for_learning(processed_data)
     classifier.learn(*inputs_answers)
-    cords_inputs= classifier.prepare_data_to_predict(processed_data)
-    ans_cord=classifier.predict(*cords_inputs)
-    predicted_image=classifier.produce_predicted_image(ans_cord)
-    classifier.postprocess_and_display_image(predicted_image)
+    del inputs_answers
 
+
+
+    cords_inputs = classifier.prepare_data_to_predict(processed_data)
+    del processed_data
+    ans_cord = classifier.predict(*cords_inputs)
+    del cords_inputs
+    predicted_image = classifier.produce_predicted_image(ans_cord)
+    del ans_cord
+    classifier.postprocess_and_display_image(predicted_image)
