@@ -14,7 +14,27 @@ from sklearn.ensemble import RandomForestClassifier
 import matplotlib.pyplot as plt
 from skimage import data
 from multiprocessing import Pool
+from multiprocessing.pool import ThreadPool
 import imblearn
+from imblearn.metrics import sensitivity_score, specificity_score
+from sklearn.metrics import accuracy_score
+from joblib import dump, load
+
+
+def getAccuracySensitivitySpecificity(producedImg, trueImg):
+    trueImg = trueImg.flatten()
+    producedImg = producedImg.flatten()
+    accuracy = accuracy_score(trueImg, producedImg)
+    sensitivity = sensitivity_score(trueImg, producedImg)
+    specifivity = specificity_score(trueImg, producedImg)
+    return (accuracy, sensitivity, specifivity)
+
+
+def statsToString(stats_in):
+    stats = list(map(lambda x: round(x, 4), stats_in))
+    return "accuracy: \t\t" + str(stats[0]) + \
+           "\nsensitivity: \t" + str(stats[1]) + \
+           "\nspecifivity: \t" + str(stats[2])
 
 
 def loadImageNr(id, show=False):
@@ -58,10 +78,11 @@ def calculate_metrics(region):
     mom = moment(region, 2).flatten()
     res = [v, m]
     res.extend(mom)
+    res.append(region[2,2])
     return res
 
 
-class WTF_classifer():
+class worst_classifer():
     def __init__(self):
         self.window_size = 5
         self.shape_before_patches = None
@@ -120,26 +141,33 @@ class WTF_classifer():
 
     def calculate_patches_metrics(self, patches_local):
         print("calculating metrics for all pixels...")
-        with Pool() as pool:
-            processed_data_unshaped = np.array(pool.map(calculate_metrics, patches_local, 25000))
+        with Pool(processes=6) as pool:
+            processed_data_unshaped = np.array(pool.map(calculate_metrics, patches_local, 1000))
         processed_data_local = processed_data_unshaped.reshape(
             self.shape_before_patches[0:2] + [len(processed_data_unshaped[0])])
         del processed_data_unshaped
         processed_data_local = np.pad(processed_data_local, (
             (self.window_size // 2, self.window_size // 2), (self.window_size // 2, self.window_size // 2), (0, 0)),
                                       'constant')
+        print("calculated metrics for all pixels")
         return processed_data_local
 
     def calculate_patches_metrics_learning(self, patches_local):
         print("calculating metrics for some pixels (learning mode)...")
-        with Pool() as pool:
+        with Pool(processes=6) as pool:
             processed_data_unshaped = np.array(pool.map(calculate_metrics, patches_local, 25000))
         return processed_data_unshaped
 
     def learn(self, inputs, correct_answers):
         print("learning (fitting)...")
-        self.clf = RandomForestClassifier(n_jobs=-1,max_depth=25)
+        self.clf = RandomForestClassifier(n_jobs=-1, max_depth=15)
         self.clf.fit(inputs, correct_answers)
+
+    def save_model(self, filename):
+        dump(self.clf, filename)
+
+    def load_model(self, filename):
+        self.clf = load(filename)
 
     def prepare_data_to_predict(self, processed_data):
         print("preparing data to predict...")
@@ -168,38 +196,27 @@ class WTF_classifer():
             predicted_image[yc, xc] = val
         return predicted_image
 
-    def postprocess_and_display_image(self, predicted_image):
-        print("done...")
-        plt.imshow(self.exp, cmap='gray')
-        plt.show()
-        plt.imshow(predicted_image, cmap='gray')
-        plt.show()
-        predicted_image = skimage.morphology.remove_small_objects(predicted_image, min_size=64, connectivity=2,
-                                                                  in_place=False)
-        plt.imshow(predicted_image, cmap='gray')
-        plt.show()
-        cv2.imshow("XD", imutils.resize(img_as_float(predicted_image), width=900))
-        cv2.waitKey(0)
+
+def postprocess_and_display_image(predicted_image, exp):
+    print("done...")
+    plt.imshow(exp, cmap='gray')
+    plt.show()
+    plt.imshow(predicted_image, cmap='gray')
+    plt.show()
+    predicted_image = skimage.morphology.remove_small_objects(predicted_image, min_size=64, connectivity=2,
+                                                              in_place=False)
+    plt.imshow(predicted_image, cmap='gray')
+    plt.show()
+    cv2.imshow("XD", imutils.resize(img_as_float(predicted_image), width=900))
+    cv2.waitKey(0)
+    return predicted_image
 
 
-if __name__ == '__main__':
-    # (img, exp, fov) = loadImageNr(0, show=False)
-    (img_a, exp_a, fov_a) = loadImageNr(0, show=False)
-    # resize = False
-    # target_width = 1000
-    # if resize:
-    #     img = imutils.resize(img, width=target_width)
-    #     exp = imutils.resize(exp, width=target_width)
-    #     fov = imutils.resize(fov, width=target_width)
-    #     img_a = imutils.resize(img_a, width=target_width)
-    #     exp_a = imutils.resize(exp_a, width=target_width)
-    #     fov_a = imutils.resize(fov_a, width=target_width)
-
-    classifier = WTF_classifer()
-    # learn
-    X=[]
-    y=[]
-    for img_nr in [3,23,9]:
+def learn_and_save_model():
+    classifier = worst_classifer()
+    X = []
+    y = []
+    for img_nr in range(1, 42, 7):
         (img, exp, fov) = loadImageNr(img_nr, show=False)
         classifier.load_data((img, exp, fov))
         patches, y_part = classifier.filter_patches(classifier.cut_into_patches_learning())
@@ -207,10 +224,14 @@ if __name__ == '__main__':
         X.extend(X_part)
         y.extend(y_part)
     classifier.learn(X, y)
+    classifier.save_model("worstModelEver")
     del patches, y
     del img, exp, fov
 
-    # predict
+
+def load_model_and_predict(img_a, exp_a, fov_a):
+    classifier = worst_classifer()
+    classifier.load_model("worstModelEver")
     classifier.load_data((img_a, exp_a, fov_a))
     processed_data = classifier.calculate_patches_metrics(classifier.cut_into_patches())
     cords_inputs = classifier.prepare_data_to_predict(processed_data)
@@ -219,4 +240,21 @@ if __name__ == '__main__':
     del cords_inputs
     predicted_image = classifier.produce_predicted_image(ans_cord)
     del ans_cord
-    classifier.postprocess_and_display_image(predicted_image)
+    return predicted_image
+
+
+def stuff():
+    #learn_and_save_model()
+    img, exp, fov = loadImageNr(44, show=False)
+    # classic()
+    # unet()
+
+    classifier_img = load_model_and_predict(img, exp, fov)
+    print("Classifier:\n" + statsToString(getAccuracySensitivitySpecificity(classifier_img, exp)))
+
+    classifier_img = postprocess_and_display_image(classifier_img, exp)
+    print("Classifier:\n" + statsToString(getAccuracySensitivitySpecificity(classifier_img, exp)))
+
+
+if __name__ == '__main__':
+    stuff()
