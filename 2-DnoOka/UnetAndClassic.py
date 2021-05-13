@@ -12,8 +12,11 @@ from skimage.util import img_as_float, img_as_bool
 from joblib import dump, load
 from keras_unet.models import custom_unet, vanilla_unet
 from keras.callbacks import ModelCheckpoint
-from keras.optimizers import Adam, SGD
+from keras.optimizers import SGD, Adam
 from keras_unet.metrics import iou, iou_thresholded
+
+
+
 
 imgShape = (512, 512)
 model_filename = 'eye_model_v5.h5'
