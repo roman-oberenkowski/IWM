@@ -1,16 +1,18 @@
 import numpy as np
 from skimage.measure import moments
+
+
 def calculate_metrics(region):
-        v = np.var(region.flatten())
-        m = np.mean(region.flatten())
-        mom = moments(region, 2).flatten()
-        res = [v, m]
-        res.extend(mom)
-        res.append(region[2,2])
-        return res
+    v = np.var(region.flatten())
+    m = np.mean(region.flatten())
+    mom = moments(region, 2).flatten()
+    res = [v, m]
+    res.extend(mom)
+    res.append(region[2, 2])
+    return res
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     import skimage.io
     import skimage.color
     import os
@@ -25,6 +27,8 @@ if __name__=="__main__":
     from imblearn.metrics import sensitivity_score, specificity_score
     from sklearn.metrics import accuracy_score
     from joblib import dump, load
+
+
     def getAccuracySensitivitySpecificity(producedImg, trueImg):
         trueImg = trueImg.flatten()
         producedImg = producedImg.flatten()
@@ -68,15 +72,13 @@ if __name__=="__main__":
             for x in range(0, dim_x, stepSize):
                 if x + windowSize >= dim_x:  # right border - discard
                     continue
-                if fov[y, x] > 0.5 and fov[y + windowSize, x + windowSize] > 0.5 and fov[y, x + windowSize] > 0.5 and fov[
-                    y + windowSize, x] > 0.5:
+                if fov[y, x] > 0.5 and fov[y + windowSize, x + windowSize] > 0.5 and fov[y, x + windowSize] > 0.5 and \
+                        fov[
+                            y + windowSize, x] > 0.5:
                     # all corners inside FOV
                     xc = x + windowSize // 2
                     yc = y + windowSize // 2
                     yield (xc, yc, exp[yc, xc], processed_data[yc, xc])
-
-
-    
 
 
     class worst_classifer():
@@ -136,7 +138,6 @@ if __name__=="__main__":
             print("undersamlped shape ", patches_from_indices.shape)
             return patches_from_indices, y_under
 
-        
         def calculate_patches_metrics(self, patches_local):
             print("calculating metrics for all pixels...")
             with Pool(processes=8) as pool:
@@ -158,10 +159,14 @@ if __name__=="__main__":
 
         def learn(self, inputs, correct_answers):
             print("learning (fitting)...")
-            self.clf = RandomForestClassifier(n_jobs=-1, max_depth=15)
+            self.clf = RandomForestClassifier(n_jobs=-1, max_depth=12)
+            temp_params = {"verbose": 1}
+            self.clf.set_params(**temp_params)
             self.clf.fit(inputs, correct_answers)
 
         def save_model(self, filename):
+            temp_params = {"verbose": 0}
+            self.clf.set_params(**temp_params)
             dump(self.clf, filename)
 
         def load_model(self, filename):
@@ -171,7 +176,8 @@ if __name__=="__main__":
             print("preparing data to predict...")
             inputs_to_predict = []
             cordinates = []
-            for (xc, yc, ans, metrics) in sliding_window(self.img, self.fov, self.exp, processed_data, 1, self.window_size):
+            for (xc, yc, ans, metrics) in sliding_window(self.img, self.fov, self.exp, processed_data, 1,
+                                                         self.window_size):
                 inputs_to_predict.append(metrics)
                 cordinates.append((xc, yc))
             return cordinates, inputs_to_predict
@@ -214,7 +220,7 @@ if __name__=="__main__":
         classifier = worst_classifer()
         X = []
         y = []
-        for img_nr in range(1, 42, 7):
+        for img_nr in range(1, 22, 1):
             (img, exp, fov) = loadImageNr(img_nr, show=False)
             classifier.load_data((img, exp, fov))
             patches, y_part = classifier.filter_patches(classifier.cut_into_patches_learning())
@@ -228,7 +234,7 @@ if __name__=="__main__":
 
 
     def load_model_and_predict(img_a, exp_a, fov_a):
-        
+
         classifier = worst_classifer()
         classifier.load_model("worstModelEver")
         classifier.load_data((img_a, exp_a, fov_a))
@@ -239,11 +245,12 @@ if __name__=="__main__":
         del cords_inputs
         predicted_image = classifier.produce_predicted_image(ans_cord)
         del ans_cord
+        print("Finished")
         return predicted_image
 
 
     def stuff():
-        #learn_and_save_model()
+        # learn_and_save_model()
         img, exp, fov = loadImageNr(44, show=False)
         # classic()
         # unet()
@@ -254,17 +261,24 @@ if __name__=="__main__":
         classifier_img = postprocess_and_display_image(classifier_img, exp)
         print("Classifier:\n" + statsToString(getAccuracySensitivitySpecificity(classifier_img, exp)))
 
-
 if __name__ == '__main__':
+    import sys
+
+    if len(sys.argv) > 1:
+        learn_and_save_model()
+        exit(-2)
     import UnetAndClassic as uc
 
     import streamlit as st
+
+
     @st.cache
     def classic(img, exp, fov):
         # classic processing
         classic_img = uc.classicProcessing((img, exp, fov))
         print("CLASSIC:\n" + uc.statsToString(uc.getAccuracySensitivitySpecificity(classic_img, exp)))
         return classic_img, uc.statsToString(uc.getAccuracySensitivitySpecificity(classic_img, exp))
+
 
     @st.cache
     def unet(img, exp, fov):
@@ -304,15 +318,19 @@ if __name__ == '__main__':
 
 
     def main_function():
-        img, exp, fov = loadImageNrCached(44, show=False)
+        img_number=st.sidebar.number_input("Image number",0,44,0,1)
+        img, exp, fov = loadImageNrCached(img_number, show=False)
 
         # st.set_page_config(page_title="Classifier", page_icon="random")
         st.write("# Eye blood vessel detection RO KL")
-        classic_button = st.sidebar.button("Classic!")
-        unet_button = st.sidebar.button("Unet!")
-        classifier_button = st.sidebar.button("Classifier!")
-        show_image_button = st.sidebar.button("Show orginal!")
-        show_exp_button = st.sidebar.button("Show exp!")
+        classic_button = st.sidebar.button("Classic")
+        unet_button = st.sidebar.button("Unet")
+        classifier_button = st.sidebar.button("Classifier")
+        show_image_button = st.sidebar.button("Show input image")
+        show_exp_button = st.sidebar.button("Show exp")
+        remove_small_objects_button = st.sidebar.button("Cassifier small objects rem")
+        objects_number_input = st.sidebar.number_input("Min pixels for small object", 1, 256, value=8, step=1)
+        objects_connectivity_input = st.sidebar.number_input("connectivity", 1, 5, value=2, step=1)
         if (unet_button):
             st.write("Unet")
             img, stats = unet(img, exp, fov)
@@ -326,13 +344,31 @@ if __name__ == '__main__':
         if (classifier_button):
             st.write("Classifer")
             img, stats = classifier_predict(img, exp, fov)
-            st.image(img)
+            st.image(img_as_float(img))
             st.write(stats)
+
+        if remove_small_objects_button:
+            st.write("Classifer,removed small objects")
+            st.write("Classifer")
+            img, stats = classifier_predict(img, exp, fov)
+            st.image(img_as_float(img))
+            st.write("Base: " + stats)
+            st.write("Classifer,removed small objects")
+            img_classifier = skimage.morphology.remove_small_objects(img, min_size=int(objects_number_input),
+                                                                     connectivity=int(objects_connectivity_input),
+                                                                     in_place=False)
+            st.image(img_as_float(img_classifier))
+            stats = statsToString(getAccuracySensitivitySpecificity(img_classifier, exp))
+            st.write("Next: " + stats)
+            st.image(exp)
+
         if (show_image_button):
             st.write("Orginal")
             st.image(img)
         if (show_exp_button):
             st.write("Expert")
             st.image(exp)
+
+
     main_function()
-    #stuff()
+    # stuff()
