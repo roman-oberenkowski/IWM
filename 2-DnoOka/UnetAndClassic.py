@@ -39,7 +39,7 @@ def statsToString(stats_in):
     stats = list(map(lambda x: round(x, 4), stats_in[:-1]))
     return "Accuracy: \t\t" + str(stats[0]) + \
            "\nSensitivity: \t" + str(stats[1]) + \
-           "\nSpecificity: \t" + str(stats[2]) + " Matrix: \t" + stats_in[-1]
+           "\nSpecificity: \t" + str(stats[2]) + "\t " + stats_in[-1]
 
 def classicProcessing(data, show=False):
     sourceImg = data[0]

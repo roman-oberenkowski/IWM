@@ -3,6 +3,7 @@ from skimage.measure import moments
 
 
 def calculate_metrics(region):
+    # first version with metrics is commented
     # v = np.var(region.flatten())
     # m = np.mean(region.flatten())
     # mom = moments(region, 2).flatten()
@@ -45,7 +46,7 @@ if __name__ == "__main__":
         stats = list(map(lambda x: round(x, 4), stats_in[:-1]))
         return "Accuracy: \t\t" + str(stats[0]) + \
                "\nSensitivity: \t" + str(stats[1]) + \
-               "\nSpecificity: \t" + str(stats[2]) + " Matrix: \t" + stats_in[-1]
+               "\nSpecificity: \t" + str(stats[2]) + "\t " + stats_in[-1]
 
 
     def loadImageNr(id, show=False):
@@ -237,7 +238,6 @@ if __name__ == "__main__":
 
 
     def load_model_and_predict(img_a, exp_a, fov_a):
-
         classifier = worst_classifer()
         classifier.load_model("worstModelEver")
         classifier.load_data((img_a, exp_a, fov_a))
@@ -251,40 +251,25 @@ if __name__ == "__main__":
         print("Finished")
         return predicted_image
 
-
-    def stuff():
-        # learn_and_save_model()
-        img, exp, fov = loadImageNr(44, show=False)
-        # classic()
-        # unet()
-
-        classifier_img = load_model_and_predict(img, exp, fov)
-        print("Classifier:\n" + statsToString(getAccuracySensitivitySpecificity(classifier_img, exp)))
-
-        classifier_img = postprocess_and_display_image(classifier_img, exp)
-        print("Classifier:\n" + statsToString(getAccuracySensitivitySpecificity(classifier_img, exp)))
-
 if __name__ == '__main__':
     import sys
 
     if len(sys.argv) > 1:
         learn_and_save_model()
-        exit(-2)
+        exit(0)
     import UnetAndClassic as uc
     import streamlit as st
 
 
     @st.cache
     def classic(img, exp, fov):
-        # classic processing
         classic_img = uc.classicProcessing((img, exp, fov))
-        print("CLASSIC:\n" + uc.statsToString(uc.getAccuracySensitivitySpecificity(classic_img, exp)))
+        # print("CLASSIC:\n" + uc.statsToString(uc.getAccuracySensitivitySpecificity(classic_img, exp)))
         return classic_img, uc.statsToString(uc.getAccuracySensitivitySpecificity(classic_img, exp))
 
 
     @st.cache
     def unet(img, exp, fov):
-        # unet
         unet_img = uc.unetPreditct((img, exp, fov))
         # print("UNET:\n" + uc.statsToString(uc.getAccuracySensitivitySpecificity(unet_img, exp)))
         return unet_img, uc.statsToString(uc.getAccuracySensitivitySpecificity(unet_img, exp))
@@ -322,45 +307,43 @@ if __name__ == '__main__':
     def main_function():
         img_number = st.sidebar.number_input("Image number", 0, 44, 0, 1)
         img, exp, fov = loadImageNrCached(img_number, show=False)
-
-        # st.set_page_config(page_title="Classifier", page_icon="random")
         st.write("# Eye blood vessel detection RO KL")
         classic_button = st.sidebar.button("Classic")
         unet_button = st.sidebar.button("Unet")
         classifier_button = st.sidebar.button("Classifier")
         show_image_button = st.sidebar.button("Show input image")
-        show_exp_button = st.sidebar.button("Show exp")
-        remove_small_objects_button = st.sidebar.button("Cassifier small objects rem")
+        show_exp_button = st.sidebar.button("Show Expert")
+
         if (unet_button):
             st.write("Unet")
             img, stats = unet(img, exp, fov)
             st.image(img)
             st.write(stats)
+            st.write("Expert: ")
+            st.image(exp)
+
         if (classic_button):
             st.write("Classic")
             img, stats = classic(img, exp, fov)
             st.image(img)
             st.write(stats)
+            st.write("Expert: ")
+            st.image(exp)
+
         if (classifier_button):
             st.write("Classifer")
             img, stats = classifier_predict(img, exp, fov)
             st.image(img_as_float(img))
             st.write(stats)
-
-        if remove_small_objects_button:
-            st.write("Classifer")
-            img, stats = classifier_predict(img, exp, fov)
-            st.image(img_as_float(img))
-            st.write("Base: " + stats)
+            st.write("Expert: ")
             st.image(exp)
 
         if (show_image_button):
-            st.write("Orginal")
+            st.write("Input")
             st.image(img)
+
         if (show_exp_button):
-            st.write("Expert")
+            st.write("Expert:")
             st.image(exp)
 
-
     main_function()
-    # stuff()
