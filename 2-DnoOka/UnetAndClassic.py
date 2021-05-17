@@ -1,4 +1,3 @@
-from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 from imblearn.metrics import sensitivity_score, specificity_score
 import skimage.io
@@ -7,6 +6,7 @@ import skimage.filters
 import skimage.morphology
 import skimage.transform
 import os
+from sklearn.metrics import accuracy_score, confusion_matrix
 import numpy as np
 from skimage.util import img_as_float, img_as_bool
 from joblib import dump, load
@@ -29,8 +29,17 @@ def getAccuracySensitivitySpecificity(producedImg, trueImg):
     accuracy = accuracy_score(trueImg, producedImg)
     sensitivity = sensitivity_score(trueImg, producedImg)
     specifivity = specificity_score(trueImg, producedImg)
-    return (accuracy, sensitivity, specifivity)
+    temp_mat = confusion_matrix(trueImg, producedImg)
+    tn, fp, fn, tp = np.array(temp_mat).flatten()
+    info = "TN: " + str(tn) + " FP: " + str(fp) + " FN: " + str(fn) + " TP: " + (str(tp))
+    return (accuracy, sensitivity, specifivity, info)
 
+
+def statsToString(stats_in):
+    stats = list(map(lambda x: round(x, 4), stats_in[:-1]))
+    return "Accuracy: \t\t" + str(stats[0]) + \
+           "\nSensitivity: \t" + str(stats[1]) + \
+           "\nSpecificity: \t" + str(stats[2]) + " Matrix: \t" + stats_in[-1]
 
 def classicProcessing(data, show=False):
     sourceImg = data[0]
@@ -46,13 +55,6 @@ def classicProcessing(data, show=False):
         skimage.io.imshow(res, cmap="gray")
         skimage.io.show()
     return res
-
-
-def statsToString(stats_in):
-    stats=list(map(lambda x:round(x,4),stats_in))
-    return "accuracy: \t\t" + str(stats[0]) + \
-           "\nsensitivity: \t" + str(stats[1]) + \
-           "\nspecifivity: \t" + str(stats[2])
 
 
 def saveModel(model, filename):

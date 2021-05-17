@@ -3,13 +3,13 @@ from skimage.measure import moments
 
 
 def calculate_metrics(region):
-    v = np.var(region.flatten())
-    m = np.mean(region.flatten())
-    mom = moments(region, 2).flatten()
-    res = [v, m]
-    res.extend(mom)
-    res.append(region[2, 2])
-    return res
+    # v = np.var(region.flatten())
+    # m = np.mean(region.flatten())
+    # mom = moments(region, 2).flatten()
+    # res = [v, m]
+    # res.extend(mom)
+    # res.append(region[2, 2])
+    return region.flatten()
 
 
 if __name__ == "__main__":
@@ -25,7 +25,7 @@ if __name__ == "__main__":
     from multiprocessing import Pool
     from imblearn.under_sampling import RandomUnderSampler
     from imblearn.metrics import sensitivity_score, specificity_score
-    from sklearn.metrics import accuracy_score
+    from sklearn.metrics import accuracy_score, confusion_matrix
     from joblib import dump, load
 
 
@@ -35,14 +35,17 @@ if __name__ == "__main__":
         accuracy = accuracy_score(trueImg, producedImg)
         sensitivity = sensitivity_score(trueImg, producedImg)
         specifivity = specificity_score(trueImg, producedImg)
-        return (accuracy, sensitivity, specifivity)
+        temp_mat = confusion_matrix(trueImg, producedImg)
+        tn, fp, fn, tp = np.array(temp_mat).flatten()
+        info = "TN: " + str(tn) + " FP: " + str(fp) + " FN: " + str(fn) + " TP: " + (str(tp))
+        return (accuracy, sensitivity, specifivity, info)
 
 
     def statsToString(stats_in):
-        stats = list(map(lambda x: round(x, 4), stats_in))
-        return "accuracy: \t\t" + str(stats[0]) + \
-               "\nsensitivity: \t" + str(stats[1]) + \
-               "\nspecifivity: \t" + str(stats[2])
+        stats = list(map(lambda x: round(x, 4), stats_in[:-1]))
+        return "Accuracy: \t\t" + str(stats[0]) + \
+               "\nSensitivity: \t" + str(stats[1]) + \
+               "\nSpecificity: \t" + str(stats[2]) + " Matrix: \t" + stats_in[-1]
 
 
     def loadImageNr(id, show=False):
@@ -83,7 +86,7 @@ if __name__ == "__main__":
 
     class worst_classifer():
         def __init__(self):
-            self.window_size = 5
+            self.window_size = 11
             self.shape_before_patches = None
             self.img = None
             self.exp = None
@@ -140,8 +143,8 @@ if __name__ == "__main__":
 
         def calculate_patches_metrics(self, patches_local):
             print("calculating metrics for all pixels...")
-            with Pool(processes=8) as pool:
-                processed_data_unshaped = np.array(pool.map(calculate_metrics, patches_local, 10000))
+            # with Pool(processes=8) as pool:
+            processed_data_unshaped = np.array(list(map(calculate_metrics, patches_local)))
             processed_data_local = processed_data_unshaped.reshape(
                 self.shape_before_patches[0:2] + [len(processed_data_unshaped[0])])
             del processed_data_unshaped
@@ -153,13 +156,13 @@ if __name__ == "__main__":
 
         def calculate_patches_metrics_learning(self, patches_local):
             print("calculating metrics for some pixels (learning mode)...")
-            with Pool(processes=8) as pool:
-                processed_data_unshaped = np.array(pool.map(calculate_metrics, patches_local, 25000))
+            # with Pool(processes=8) as pool:
+            processed_data_unshaped = np.array(list(map(calculate_metrics, patches_local)))
             return processed_data_unshaped
 
         def learn(self, inputs, correct_answers):
             print("learning (fitting)...")
-            self.clf = RandomForestClassifier(n_jobs=-1, max_depth=12)
+            self.clf = RandomForestClassifier(n_estimators=10, n_jobs=-1, max_depth=7)
             temp_params = {"verbose": 1}
             self.clf.set_params(**temp_params)
             self.clf.fit(inputs, correct_answers)
@@ -193,7 +196,7 @@ if __name__ == "__main__":
             predicted_image = np.zeros(self.img.shape, dtype=bool)
             for answer, coordinates in ans_cord:
                 xc, yc = coordinates
-                if (answer[1] > 0.65):
+                if (answer[1] > 0.6):
                     val = True
                 else:
                     val = False
@@ -220,7 +223,7 @@ if __name__ == "__main__":
         classifier = worst_classifer()
         X = []
         y = []
-        for img_nr in range(1, 22, 1):
+        for img_nr in range(1, 16, 1):
             (img, exp, fov) = loadImageNr(img_nr, show=False)
             classifier.load_data((img, exp, fov))
             patches, y_part = classifier.filter_patches(classifier.cut_into_patches_learning())
@@ -268,7 +271,6 @@ if __name__ == '__main__':
         learn_and_save_model()
         exit(-2)
     import UnetAndClassic as uc
-
     import streamlit as st
 
 
@@ -318,7 +320,7 @@ if __name__ == '__main__':
 
 
     def main_function():
-        img_number=st.sidebar.number_input("Image number",0,44,0,1)
+        img_number = st.sidebar.number_input("Image number", 0, 44, 0, 1)
         img, exp, fov = loadImageNrCached(img_number, show=False)
 
         # st.set_page_config(page_title="Classifier", page_icon="random")
@@ -329,8 +331,6 @@ if __name__ == '__main__':
         show_image_button = st.sidebar.button("Show input image")
         show_exp_button = st.sidebar.button("Show exp")
         remove_small_objects_button = st.sidebar.button("Cassifier small objects rem")
-        objects_number_input = st.sidebar.number_input("Min pixels for small object", 1, 256, value=8, step=1)
-        objects_connectivity_input = st.sidebar.number_input("connectivity", 1, 5, value=2, step=1)
         if (unet_button):
             st.write("Unet")
             img, stats = unet(img, exp, fov)
@@ -348,18 +348,10 @@ if __name__ == '__main__':
             st.write(stats)
 
         if remove_small_objects_button:
-            st.write("Classifer,removed small objects")
             st.write("Classifer")
             img, stats = classifier_predict(img, exp, fov)
             st.image(img_as_float(img))
             st.write("Base: " + stats)
-            st.write("Classifer,removed small objects")
-            img_classifier = skimage.morphology.remove_small_objects(img, min_size=int(objects_number_input),
-                                                                     connectivity=int(objects_connectivity_input),
-                                                                     in_place=False)
-            st.image(img_as_float(img_classifier))
-            stats = statsToString(getAccuracySensitivitySpecificity(img_classifier, exp))
-            st.write("Next: " + stats)
             st.image(exp)
 
         if (show_image_button):
